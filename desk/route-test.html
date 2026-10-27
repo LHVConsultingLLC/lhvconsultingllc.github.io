@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Offline Routing Test</title>
+<!-- PROTOTYPE (2026-10-11). Standalone test page for desk/route.js. Not linked from desk.html.
+     Routing is ONLY started by the driver (Dustin 10/11: no auto routing): click a pin, then
+     Route here (R). It ends when that parcel is shot, on Route here elsewhere, or Stop (Esc).
+     Everything below is local: no CDN, no tile server. After "Prepare" it runs with the
+     network fully off (service worker = page + libraries; IndexedDB = county files). -->
+<link rel="stylesheet" href="route-vendor/maplibre-gl.css">
+<script src="route-vendor/maplibre-gl.js"></script>
+<script src="route-vendor/pmtiles.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="route.js"></script>
+<style>
+:root{--bg:#0f1117;--surface:#171a23;--border:#2a2f3d;--text:#eef0f6;--muted:#9aa0b4;--blue:#2f6bff;--green:#2ecc8a;--amber:#ffb020;--red:#ff5a5a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+#map{position:absolute;inset:0}
+/* ── THE BANNER: next parcel, big and high-contrast ── */
+#banner{position:absolute;top:10px;left:10px;right:min(340px,38vw);z-index:5;background:#05070c;border:2px solid #3a4258;border-radius:12px;padding:12px 16px;display:flex;gap:16px;align-items:center;box-shadow:0 4px 18px #0008}
+#banner.routing{border-color:var(--blue)}
+#arrow{flex:0 0 64px;height:64px;border-radius:50%;background:#1b2132;display:flex;align-items:center;justify-content:center;position:relative}
+#arrow svg{width:56px;height:56px;transition:transform .3s}
+#arrow .cmp{position:absolute;bottom:-2px;font-weight:800;font-size:13px;color:var(--muted)}
+#bmain{flex:1;min-width:0}
+#bseq{font-size:15px;font-weight:800;letter-spacing:.06em;color:var(--amber)}
+#baddr{font-size:clamp(20px,2.4vw,32px);font-weight:800;line-height:1.12;color:#fff;overflow-wrap:anywhere}
+#bturn{margin-top:6px;font-size:clamp(16px,1.8vw,22px);font-weight:700;color:#9fc0ff;min-height:0}
+#bturn:empty{display:none}
+#bnote{margin-top:4px;font-size:13px;color:var(--muted)}
+#bnote:empty{display:none}
+#bdist{flex:0 0 auto;text-align:right}
+#bdist .d{font-size:clamp(22px,2.6vw,34px);font-weight:800;color:#fff}
+#bdist .t{font-size:18px;font-weight:700;color:var(--green)}
+#bdist .s{font-size:12px;color:var(--muted)}
+/* ── side panel ── */
+#side{position:absolute;top:10px;right:10px;bottom:10px;width:min(320px,36vw);z-index:5;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:auto;padding:12px}
+#side h3{margin:14px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#side h3:first-child{margin-top:0}
+.kbd{display:inline-block;border:1px solid #444b60;border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:11px;color:var(--muted)}
+label.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
+input[type=number],select{width:90px;background:#0f1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px}
+button.b{background:#232838;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px 10px;cursor:pointer;font-weight:600}
+button.b:hover{border-color:#4b5578}
+button.b.p{background:var(--blue);border-color:var(--blue)}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.st{font-size:12.5px;color:var(--muted)}
+.st b{color:var(--text)}
+.ok{color:var(--green)!important}.warn{color:var(--amber)!important}.bad{color:var(--red)!important}
+#nmea{font:11px/1.3 ui-monospace,Menlo,monospace;color:#8fd19e;background:#0b0d12;border:1px solid var(--border);border-radius:6px;padding:6px;height:62px;overflow:hidden;white-space:pre}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t td{padding:2px 0;border-bottom:1px solid #222736}
+table.t td:last-child{text-align:right;font-weight:700}
+/* ── pins ── */
+.pin{min-width:24px;height:24px;padding:0 5px;border-radius:12px;background:#1f2a44;color:#fff;border:2px solid #fff;font:800 11px/20px -apple-system,Arial,sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 3px #0009;position:relative}
+.pin.done{background:#4d5a52;opacity:.55;border-color:#cfd8d3}
+.pin.next{background:var(--amber);color:#111;border-color:#111;transform:scale(1.25);z-index:3}
+.pin.sel{outline:3px solid #7a4dff}
+.pin .lab{display:none;position:absolute;left:50%;top:28px;transform:translateX(-50%);white-space:nowrap;background:#05070c;color:#fff;border:1px solid #fff;border-radius:6px;padding:3px 7px;font:700 13px/1.2 -apple-system,Arial,sans-serif}
+.pin.next .lab,.pin.sel .lab{display:block}
+.puck{width:22px;height:22px;border-radius:50%;background:#1a73ff;border:3px solid #fff;box-shadow:0 0 0 6px #1a73ff44;position:relative}
+.puck i{position:absolute;left:50%;top:-14px;margin-left:-7px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid #1a73ff}
+#prep{position:absolute;inset:0;z-index:20;background:#0f1117f2;display:flex;align-items:center;justify-content:center}
+#prep .card{width:min(560px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px}
+#prep h2{margin:0 0 6px}
+#prep p{color:var(--muted);margin:6px 0 12px}
+.maplibregl-ctrl-attrib{font-size:11px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="banner">
+  <div id="arrow"><svg viewBox="0 0 60 60"><path d="M30 4 L48 50 L30 40 L12 50 Z" fill="#ffb020" stroke="#111" stroke-width="2"/></svg><span class="cmp" id="bcmp"></span></div>
+  <div id="bmain">
+    <div id="bseq">NEXT</div>
+    <div id="baddr">Loading…</div>
+    <div id="bturn"></div>
+    <div id="bnote"></div>
+  </div>
+  <div id="bdist"><div class="d" id="bd">—</div><div class="t" id="bt"></div><div class="s" id="bs"></div></div>
+</div>
+
+<div id="side">
+  <h3>Routing · <span class="kbd">R</span> Route here · <span class="kbd">Esc</span> stop</h3>
+  <div class="btns"><button class="b p" id="routeBtn" title="Turn-by-turn to the clicked pin only (R)">↝ Route here</button><button class="b" id="stopBtn" title="Stop the route (Esc)">■ Stop</button></div>
+  <div class="st" id="modeNote">Click a pin, then Route here. Routing never starts by itself; it ends when that parcel is shot, on Route here elsewhere, or Stop.</div>
+  <label class="row st" title="Not the drive file rule. Shown so Dustin can compare. Display only: it never starts a route."><span><input type="checkbox" id="nearestOpt"> Proposal only: NEXT = nearest unshot parcel instead of the next seq (display only)</span></label>
+
+  <h3>County files</h3>
+  <div class="st" id="files">—</div>
+  <div class="st" id="net"></div>
+
+  <h3>Production (estimate)</h3>
+  <table class="t" id="prod"></table>
+  <div class="st" id="prodNote"></div>
+
+  <h3>Real position</h3>
+  <div class="btns"><button class="b p" id="puckBtn" title="USB GPS puck (BU-353N5) — Chrome or Edge">Connect GPS puck</button><button class="b" id="geoBtn" title="This computer's own location">Use computer location</button><button class="b" id="doneBtn" title="Mark the routed (or clicked) parcel as shot (key D)">Shot it <span class="kbd">D</span></button></div>
+  <div class="st" id="gpsSt">No position source yet.</div>
+
+  <h3>Test drive (simulated puck)</h3>
+  <div class="btns">
+    <button class="b p" id="simGo">▶ Drive</button>
+    <button class="b" id="simPause">❚❚ Pause</button>
+    <select id="simX" title="Simulation speed"><option value="10">10×</option><option value="30" selected>30×</option><option value="60">60×</option><option value="120">120×</option></select>
+  </div>
+  <div class="btns" style="margin-top:6px">
+    <button class="b" id="simWrong" title="Driver takes a wrong road; routing must notice and reroute">Wrong turn</button>
+  </div>
+  <label class="row"><span class="st">Sim driving speed (mph)</span><input id="simMph" type="number" value="30" min="5" max="70"></label>
+  <div class="st" id="simSt"></div>
+  <div id="nmea"></div>
+  <h3>Log</h3>
+  <div class="st" id="log" style="max-height:140px;overflow:auto"></div>
+  <div class="btns" style="margin-top:8px"><button class="b" id="reprep">Load other county files…</button><button class="b" id="relaunch" title="Tear down and start again from the files saved in this browser only">Restart from saved files</button><label class="row st"><input type="checkbox" id="headUp"> Heading up <span class="kbd">H</span></label></div>
+</div>
+
+<div id="prep" style="display:none"><div class="card">
+  <h2>Prepare for no signal</h2>
+  <p>Pick the three county files from <b>DRIVE FILES/&lt;COUNTY&gt;/</b> in Dropbox: the drive file (<b>.xlsx</b>), the map file (<b>.pmtiles</b>) and the road file (<b>.roads.json</b>). They are copied into this browser, so the map and routing keep working with the network off.</p>
+  <input type="file" id="pick" multiple accept=".xlsx,.json,.pmtiles">
+  <p class="st" id="prepSt"></p>
+</div></div>
+
+<script>
+'use strict';
+var Q = new URLSearchParams(location.search), $ = function (id) { return document.getElementById(id); };
+var RT = window.LHVRoute;
+// ── CALIBRATION — measured, kept in route.js (LHVRoute.CALIB; report §6) ──
+var CALIB = window.ROUTE_CALIB || RT.CALIB;
+function log(s) { var d = new Date(); $('log').insertAdjacentHTML('afterbegin', '<div>' + d.toTimeString().slice(0, 8) + ' ' + s + '</div>'); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+// ════ STORAGE: county files live in IndexedDB after Prepare ═══════════════════
+var DB = { db: null,
+  open: function () { return new Promise(function (res, rej) { var r = indexedDB.open('lhv-route', 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore('files'); }; r.onsuccess = function () { DB.db = r.result; res(); }; r.onerror = function () { rej(r.error); }; }); },
+  put: function (k, v) { return new Promise(function (res, rej) { var t = DB.db.transaction('files', 'readwrite'); t.objectStore('files').put(v, k); t.oncomplete = res; t.onerror = function () { rej(t.error); }; }); },
+  get: function (k) { return new Promise(function (res) { var r = DB.db.transaction('files').objectStore('files').get(k); r.onsuccess = function () { res(r.result); }; r.onerror = function () { res(null); }; }); } };
+
+function rowsFromXlsx(buf) {
+  var wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets['DRIVE'] || wb.Sheets[wb.SheetNames[0]];
+  var a = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  return a.filter(function (r) { return r.Seq !== '' && r.Latitude !== '' && r.Longitude !== ''; }).map(function (r) {
+    return { seq: +r.Seq, pid: r['Parcel ID'], street: r.Address, city: r.City, lat: +r.Latitude, lng: +r.Longitude }; });
+}
+async function prepareFrom(files) {   // files: [{name, blob}]
+  var drive = null, tiles = null, roads = null, bucket = null;
+  for (var f of files) {
+    var n = f.name.toLowerCase();
+    if (n.endsWith('.pmtiles')) { tiles = f; bucket = bucket || f.name.replace(/\.pmtiles$/i, ''); }
+    else if (n.endsWith('.roads.json')) roads = f;
+    else if (n.endsWith('.xlsx') || n.endsWith('.json')) { drive = f; bucket = f.name.replace(/\.(xlsx|json)$/i, ''); }
+  }
+  if (!drive || !tiles || !roads) throw new Error('Need all three: drive file, .pmtiles map file, .roads.json road file');
+  var rows = drive.name.toLowerCase().endsWith('.xlsx') ? rowsFromXlsx(await drive.blob.arrayBuffer()) : (JSON.parse(await drive.blob.text()).rows);
+  await DB.put(bucket + ':rows', rows); await DB.put(bucket + ':tiles', tiles.blob); await DB.put(bucket + ':roads', roads.blob);
+  // label fonts too, so street names still draw with no signal (no service worker needed)
+  for (var fs of FONT_STACKS) for (var rg of FONT_RANGES) {
+    try { var fr = await fetch('route-vendor/fonts/' + fs + '/' + rg + '.pbf'); if (fr.ok) await DB.put('font:' + fs + '/' + rg, await fr.blob()); } catch (e) {}
+  }
+  await DB.put('current', { bucket: bucket, at: Date.now(), tilesBytes: tiles.blob.size, roadsBytes: roads.blob.size, driveName: drive.name, rows: rows.length });
+  return bucket;
+}
+async function prepareFromUrls() {
+  var names = ['drive', 'tiles', 'roads'], out = [];
+  for (var k of names) { var u = Q.get(k); var r = await fetch(u); if (!r.ok) throw new Error(u + ' → ' + r.status); out.push({ name: u.split('/').pop(), blob: await r.blob() }); }
+  return prepareFrom(out);
+}
+
+// ════ MAP: county vector map from the local .pmtiles file ═══════════════════════
+var FONT_STACKS = ['Noto Sans Regular', 'Noto Sans Medium'], FONT_RANGES = ['0-255', '256-511', '8192-8447'];
+var protocol = new pmtiles.Protocol(); maplibregl.addProtocol('pmtiles', protocol.tile);
+// fonts come out of IndexedDB too; a range we never stored draws no glyphs instead of failing
+maplibregl.addProtocol('lhvfont', function (params) {
+  var key = decodeURIComponent(params.url.replace('lhvfont://', '')).replace(/\.pbf$/, '');
+  return DB.get('font:' + key).then(function (b) { return b ? b.arrayBuffer() : new ArrayBuffer(0); }).then(function (buf) { return { data: buf }; });
+});
+function BlobSource(blob, key) { this.blob = blob; this.key = key; }
+BlobSource.prototype.getKey = function () { return this.key; };
+BlobSource.prototype.getBytes = function (off, len) { return this.blob.slice(off, off + len).arrayBuffer().then(function (b) { return { data: b }; }); };
+function styleFor(key) {
+  var base = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
+  var road = function (kind) { return ['==', ['get', 'kind'], kind]; };
+  var label = { 'text-font': ['Noto Sans Regular'], 'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': ['interpolate', ['linear'], ['zoom'], 12, 11, 17, 15] };
+  return { version: 8, glyphs: 'lhvfont://{fontstack}/{range}.pbf',
+    sources: { c: { type: 'vector', url: 'pmtiles://' + key, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · Protomaps' },
+      route: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } } },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#e8e4da' } },
+      { id: 'earth', type: 'fill', source: 'c', 'source-layer': 'earth', paint: { 'fill-color': '#f1eee7' } },
+      { id: 'green', type: 'fill', source: 'c', 'source-layer': 'landuse', filter: ['in', ['get', 'kind'], ['literal', ['wood', 'forest', 'park', 'nature_reserve', 'grass', 'meadow', 'golf_course', 'cemetery', 'farmland', 'orchard']]], paint: { 'fill-color': '#dfe9d2' } },
+      { id: 'water', type: 'fill', source: 'c', 'source-layer': 'water', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#a8c8e6' } },
+      { id: 'waterl', type: 'line', source: 'c', 'source-layer': 'water', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': '#a8c8e6', 'line-width': 1.2 } },
+      { id: 'bldg', type: 'fill', source: 'c', 'source-layer': 'buildings', minzoom: 14, paint: { 'fill-color': '#d6cfc2' } },
+      { id: 'county', type: 'line', source: 'c', 'source-layer': 'boundaries', paint: { 'line-color': '#9a8fb0', 'line-width': 1.5, 'line-dasharray': [3, 2] } },
+      { id: 'minor-case', type: 'line', source: 'c', 'source-layer': 'roads', filter: ['in', ['get', 'kind'], ['literal', ['minor_road', 'other']]], paint: { 'line-color': '#b9b2a5', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 11, 1.2, 17, 13] } },
+      { id: 'minor', type: 'line', source: 'c', 'source-layer': 'roads', filter: ['in', ['get', 'kind'], ['literal', ['minor_road', 'other']]], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 11, 0.6, 17, 10] } },
+      { id: 'major-case', type: 'line', source: 'c', 'source-layer': 'roads', filter: road('major_road'), paint: { 'line-color': '#c9a35c', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 8, 1.4, 17, 16] } },
+      { id: 'major', type: 'line', source: 'c', 'source-layer': 'roads', filter: road('major_road'), paint: { 'line-color': '#ffe08a', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 8, 0.8, 17, 13] } },
+      { id: 'hwy', type: 'line', source: 'c', 'source-layer': 'roads', filter: road('highway'), paint: { 'line-color': '#f59f3a', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 6, 1, 17, 18] } },
+      { id: 'route-case', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#0b2a8a', 'line-width': 10 } },
+      { id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#2f7bff', 'line-width': 6 } },
+      { id: 'road-label', type: 'symbol', source: 'c', 'source-layer': 'roads', minzoom: 12, filter: ['has', 'name'], layout: label, paint: { 'text-color': '#3b3b3b', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } },
+      { id: 'place', type: 'symbol', source: 'c', 'source-layer': 'places', filter: ['in', ['get', 'kind'], ['literal', ['locality', 'neighbourhood', 'macrohood']]], layout: { 'text-font': ['Noto Sans Medium'], 'text-field': ['get', 'name'], 'text-size': ['interpolate', ['linear'], ['zoom'], 8, 12, 14, 18] }, paint: { 'text-color': '#2d2a40', 'text-halo-color': '#fff', 'text-halo-width': 2 } }
+    ] };
+}
+
+// ════ APP ═══════════════════════════════════════════════════════════════════
+var map, G, NAV, ROWS, CUR, pins = {}, puck = null, lastView = null, headUp = false, SEL = null;
+
+async function boot() {
+  try { if ('serviceWorker' in navigator) await navigator.serviceWorker.register('route-sw.js'); } catch (e) { log('service worker: ' + e.message); }
+  await DB.open();
+  CUR = await DB.get('current');
+  if (Q.get('drive') && Q.get('prepare') === '1') {
+    try { log('Preparing from ' + Q.get('drive')); await prepareFromUrls(); CUR = await DB.get('current'); log('Prepared ✓ — the network can go off now'); }
+    catch (e) { log('<span class="bad">prepare failed: ' + esc(e.message) + '</span>'); }
+  }
+  if (!CUR) { $('prep').style.display = 'flex'; return; }
+  start();
+}
+$('pick').onchange = async function () {
+  $('prepSt').textContent = 'Copying…';
+  try { var b = await prepareFrom(Array.from(this.files).map(function (f) { return { name: f.name, blob: f }; })); CUR = await DB.get('current'); $('prep').style.display = 'none'; start(); }
+  catch (e) { $('prepSt').textContent = e.message; }
+};
+$('reprep').onclick = function () { $('prep').style.display = 'flex'; };
+// Restart = what a relaunch with no signal does: nothing but IndexedDB.
+$('relaunch').onclick = async function () {
+  sim.on = false; if (map) { map.remove(); map = null; } pins = {}; puck = null;
+  try { protocol = new pmtiles.Protocol(); maplibregl.removeProtocol('pmtiles'); maplibregl.addProtocol('pmtiles', protocol.tile); } catch (e) {}
+  netFails = 0;
+  CUR = await DB.get('current'); log('Restarted from saved files (IndexedDB only)'); start();
+};
+
+async function start() {
+  var B = CUR.bucket;
+  ROWS = await DB.get(B + ':rows');
+  var tilesBlob = await DB.get(B + ':tiles'), roadsBlob = await DB.get(B + ':roads');
+  var t0 = performance.now();
+  G = new RT.Graph(JSON.parse(await roadsBlob.text()), CALIB.factor ? { factor: CALIB.factor } : {});
+  var gms = Math.round(performance.now() - t0);
+  NAV = new RT.Nav(G, ROWS);
+  $('files').innerHTML = '<b>' + esc(B) + '</b> · ' + ROWS.length + ' parcels<br>map file ' + (tilesBlob.size / 1e6).toFixed(1) + ' MB · road file ' + (roadsBlob.size / 1e6).toFixed(1) + ' MB (' + G.nV.toLocaleString() + ' junctions, loaded in ' + gms + ' ms)<br>prepared ' + new Date(CUR.at).toLocaleString();
+  protocol.add(new pmtiles.PMTiles(new BlobSource(tilesBlob, B)));
+  var la = ROWS.map(function (r) { return r.lat; }), lo = ROWS.map(function (r) { return r.lng; });
+  map = new maplibregl.Map({ container: 'map', style: styleFor(B), bounds: [[Math.min.apply(0, lo), Math.min.apply(0, la)], [Math.max.apply(0, lo), Math.max.apply(0, la)]], fitBoundsOptions: { padding: { top: 150, bottom: 30, left: 30, right: 360 } }, attributionControl: { compact: false }, maxZoom: 19 });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'bottom-left');
+  map.on('load', function () { buildPins(); render(NAV.update(null)); renderProd(); });
+  map.on('error', function (e) { netFails++; log('<span class="warn">map: ' + esc(e.error && e.error.message) + '</span>'); });
+  netWatch();
+}
+function buildPins() {
+  ROWS.forEach(function (r) {
+    var wrap = document.createElement('div'), el = document.createElement('div'); wrap.appendChild(el);
+    el.className = 'pin'; el.innerHTML = esc(r.seq) + '<span class="lab">SEQ ' + esc(r.seq) + ' · ' + esc(r.street) + '</span>';
+    el.onclick = function (ev) { ev.stopPropagation(); SEL = SEL === String(r.seq) ? null : String(r.seq); render(NAV.update(null)); };
+    pins[String(r.seq)] = { el: el, wrap: wrap, m: new maplibregl.Marker({ element: wrap }).setLngLat([r.lng, r.lat]).addTo(map) };
+  });
+  var pe = document.createElement('div'); pe.className = 'puck'; pe.innerHTML = '<i></i>'; puck = new maplibregl.Marker({ element: pe, rotationAlignment: 'map' });
+}
+// ── Route here: the ONLY way a route starts (driver's press) ──
+function routeHere() {
+  if (!SEL) { log('<span class="warn">Click a pin first, then Route here</span>'); return; }
+  if (NAV.target === SEL) { log('Already routing to SEQ ' + SEL); return; }
+  NAV.routeTo(SEL); log('Route here → SEQ ' + SEL); render(NAV.update(null));
+}
+function stopRoute(why) { if (!NAV.target) return; var t = NAV.target; NAV.stop(); sim.on = false; sim.goal = null; sim.path = []; log((why || 'Route stopped') + ' (SEQ ' + t + ')'); render(NAV.update(null)); }
+$('routeBtn').onclick = routeHere;
+$('stopBtn').onclick = function () { stopRoute(); };
+document.addEventListener('keydown', function (e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'r' || e.key === 'R') { routeHere(); e.preventDefault(); }
+  if (e.key === 'h' || e.key === 'H') { $('headUp').checked = !$('headUp').checked; headUp = $('headUp').checked; }
+  if (e.key === 'Escape') { if (NAV.target) stopRoute(); else if (SEL) { SEL = null; render(NAV.update(null)); } }
+});
+$('nearestOpt').onchange = function () { NAV.order = this.checked ? 'nearest' : 'seq'; log(this.checked ? 'NEXT = nearest unshot parcel (proposal, display only)' : 'NEXT = next seq (drive file rule)'); render(NAV.update(null)); };
+$('headUp').onchange = function () { headUp = this.checked; if (!headUp) map.easeTo({ bearing: 0 }); };
+
+// ── the banner ──
+function render(v) {
+  lastView = v; if (!v) return;
+  // no route: the banner shows the clicked pin (or the NEXT suggestion), straight line only
+  if (!v.target) {
+    var shown = SEL ? NAV.bySeq[SEL] : NAV.next();
+    v = { target: shown, routing: false, reason: '', display: true };
+    if (shown && lastFix) { v.straightM = RT.hav(lastFix.lat, lastFix.lng, shown.lat, shown.lng); v.bearing = RT.bearing(lastFix.lat, lastFix.lng, shown.lat, shown.lng); v.compass = RT.compass(v.bearing); }
+    else if (shown) v.reason = 'Waiting for a GPS position.';
+  }
+  var t = v.target, ban = $('banner'), nx = NAV.next();
+  Object.keys(pins).forEach(function (s) { var p = pins[s].el, cls = 'pin' + (NAV.driven[s] ? ' done' : '') + ((NAV.target ? NAV.target === s : (nx && String(nx.seq) === s)) ? ' next' : '') + (SEL === s ? ' sel' : ''); if (p.className !== cls) { p.className = cls; pins[s].wrap.style.zIndex = cls.indexOf('next') >= 0 ? 30 : cls.indexOf('sel') >= 0 ? 20 : cls.indexOf('done') >= 0 ? 0 : 10; } });
+  if (!t) { $('bseq').textContent = 'DONE'; $('baddr').textContent = 'Every parcel on the list is shot.'; $('bd').textContent = ''; $('bt').textContent = ''; return; }
+  $('bseq').textContent = (NAV.target ? 'ROUTING TO · ' : SEL ? 'CLICKED · ' : 'NEXT TO DRIVE (suggestion) · ') + 'SEQ ' + t.seq;
+  $('baddr').textContent = t.street + (t.city ? ', ' + t.city : '');
+  ban.classList.toggle('routing', !!v.routing);
+  if (v.straightM == null) { $('bd').textContent = '—'; $('bt').textContent = ''; $('bs').textContent = ''; $('bturn').textContent = ''; $('bnote').textContent = v.reason || ''; return; }
+  $('arrow').querySelector('svg').style.transform = 'rotate(' + (headUp && lastFix && lastFix.hdg != null ? v.bearing - lastFix.hdg : v.bearing - map.getBearing()) + 'deg)';
+  $('bcmp').textContent = v.compass;
+  if (v.routing) {
+    $('bd').textContent = RT.fmtDist(v.remM); $('bt').textContent = RT.fmtTime(v.etaS) + (CALIB.factor ? '' : ' (uncal.)');
+    $('bs').textContent = 'by road · ' + RT.fmtDist(v.straightM) + ' straight';
+    var st = v.step, txt = st.type === 'arrive' ? 'Arrive' + (v.arriveSide ? ' — parcel ' + v.arriveSide : '') : st.text;
+    $('bturn').textContent = v.turnAround ? 'Turn around when safe — then ' + txt.charAt(0).toLowerCase() + txt.slice(1) + (v.stepInM > 30 ? ' in ' + RT.fmtDist(v.stepInM) : '')
+      : (v.stepInM > 30 ? 'In ' + RT.fmtDist(v.stepInM) + ': ' : '') + txt;
+    $('bnote').textContent = (v.onRoad ? 'On ' + v.onRoad : '') + (v.reroutes ? ' · rerouted ' + v.reroutes + '×' : '');
+  } else {
+    $('bd').textContent = RT.fmtDist(v.straightM); $('bt').textContent = v.compass; $('bs').textContent = 'straight line';
+    $('bturn').textContent = ''; $('bnote').textContent = v.reason || (v.display ? 'Not routing · press Route here (R) for turn-by-turn' : '');
+  }
+  var src = map.getSource('route'); if (src) src.setData(v.routing && v.route ? { type: 'Feature', geometry: { type: 'LineString', coordinates: v.route.coords.map(function (c) { return [c[1], c[0]]; }) } } : { type: 'FeatureCollection', features: [] });
+}
+
+// ── production panel ──
+function remainingRows() { return ROWS.filter(function (r) { return !NAV.driven[String(r.seq)]; }).sort(function (a, b) { return a.seq - b.seq; }); }
+var simClock = { activeS: 0, closes: [], modelS: 0 };
+function renderProd() {
+  var rem = remainingRows(), t0 = performance.now(), a = RT.Production.along(G, rem), ms = Math.round(performance.now() - t0);
+  var rows = [['Parcels left', rem.length], ['Road miles, seq order', (a.distM / 1609.344).toFixed(0) + ' mi'], ['Straight-line miles, seq order', (a.straightM / 1609.344).toFixed(0) + ' mi']];
+  var cal = CALIB.factor != null && CALIB.atParcelS != null;
+  if (cal) {
+    var driveH = (a.timeS + (CALIB.perHopS || 0) * Math.max(0, rem.length - 1)) / 3600, dwellH = rem.length * CALIB.atParcelS / 3600;
+    rows.push(['Drive time (calibrated)', driveH.toFixed(1) + ' h'], ['At-parcel time (measured)', dwellH.toFixed(1) + ' h'], ['Active hours to finish', (driveH + dwellH).toFixed(1) + ' h']);
+  } else rows.push(['Drive time at starting speeds', (a.timeS / 3600).toFixed(1) + ' h (not calibrated)']);
+  if (simClock.closes.length) {
+    var ahead = simClock.modelS - simClock.activeS;
+    rows.push(['Shot this run', simClock.closes.length], ['Pace vs model', (ahead >= 0 ? 'ahead ' : 'behind ') + Math.round(Math.abs(ahead) / 60) + ' min']);
+  }
+  $('prod').innerHTML = rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>'; }).join('');
+  $('prodNote').innerHTML = (cal ? 'Basis: ' + esc(CALIB.basis) : 'Calibration not loaded: times use starting speeds only.') + ' · ' + a.hops.length + ' hops routed in ' + ms + ' ms' + (a.missing ? ' · ' + a.missing + ' hops off the road file' : '');
+}
+
+// ── network watch: proves nothing is fetched from outside ──
+var netFails = 0;
+function netWatch() {
+  function upd() { $('net').innerHTML = (navigator.onLine ? 'Network: <b>on</b>' : 'Network: <b class="warn">OFF</b>') + ' · map + routing run from this laptop' + (netFails ? ' · ' + netFails + ' blocked request(s)' : ''); }
+  window.addEventListener('online', upd); window.addEventListener('offline', upd); upd(); setInterval(upd, 3000);
+}
+
+// ════ SIMULATED PUCK: drives real roads, emits real NMEA, through the real parser ═══
+var sim = { on: false, pos: null, path: [], i: 0, goal: null, wait: 0, timer: null, simT: Date.parse('2026-10-11T13:00:00Z'), hopStartS: 0 };
+var lastFix = null, nmeaLines = [];
+function feed(line) {
+  nmeaLines.push(line); if (nmeaLines.length > 4) nmeaLines.shift(); $('nmea').textContent = nmeaLines.join('\n');
+  var f = RT.Nmea.parse(line); if (!f) return;
+  if (f.src === 'RMC') {
+    lastFix = f; puck.setLngLat([f.lng, f.lat]).setRotation(f.hdg || 0); if (!puck._map) puck.addTo(map);
+    var v = NAV.update(f); render(v);
+    if (headUp && f.hdg != null) map.jumpTo({ center: [f.lng, f.lat], bearing: f.hdg, zoom: Math.max(map.getZoom(), 14.5) });
+    else if (!map.getBounds().contains([f.lng, f.lat]) || map.getZoom() < 13) map.jumpTo({ center: [f.lng, f.lat], zoom: Math.max(map.getZoom(), 14) });
+    else map.panTo([f.lng, f.lat], { duration: 0 });
+  }
+}
+function planTo(lat, lng, label) {
+  var r = G.route(sim.pos[0], sim.pos[1], lat, lng, { maxSnapM: 2500 });
+  if (!r) { log('<span class="bad">sim: no road to ' + esc(label) + '</span>'); return false; }
+  var x = +$('simX').value, mph = +$('simMph').value || 30;
+  sim.path = RT.simAlong(r.coords, mph, x * 0.25); sim.i = 0; sim.hopModelS = r.timeS; return true;
+}
+// the simulated driver drives to the ROUTED parcel only; with no route it waits
+function simNextGoal() {
+  var t = NAV.target ? NAV.bySeq[NAV.target] : null;
+  if (!t) { sim.on = false; log('Sim waits: press Route here on a pin'); return; }
+  sim.goal = { kind: 'parcel', row: t }; sim.hopStartS = simClock.activeS;
+  planTo(t.lat, t.lng, 'SEQ ' + t.seq);
+}
+function simTick() {
+  if (!sim.on) return;
+  var x = +$('simX').value;
+  if (sim.wait > 0) { sim.wait -= x * 0.25; simClock.activeS += x * 0.25; return; }
+  if (sim.goal && sim.goal.kind === 'parcel' && String(sim.goal.row.seq) !== NAV.target) { sim.goal = null; sim.path = []; }   // target switched or stopped
+  if (!sim.goal) simNextGoal();
+  if (!sim.on || !sim.path.length) return;
+  var p = sim.path[Math.min(sim.i, sim.path.length - 1)]; sim.i++;
+  sim.pos = [p.lat, p.lng]; sim.simT += x * 0.25 * 1000; simClock.activeS += x * 0.25;
+  var when = new Date(sim.simT);
+  feed(RT.Nmea.rmc(p.lat, p.lng, p.mph, p.hdg, when)); feed(RT.Nmea.gga(p.lat, p.lng, when));
+  if (sim.i >= sim.path.length) {
+    var g = sim.goal; sim.goal = null; sim.path = [];
+    if (g.kind === 'parcel') {
+      var ended = NAV.shot(g.row.seq); simClock.closes.push(sim.simT);
+      // model time for this hop = calibrated road time + fixed per-hop seconds + at-parcel time
+      simClock.modelS += (sim.hopModelS || 0) + (CALIB.perHopS || 0) + (CALIB.atParcelS || 0);
+      sim.wait = CALIB.atParcelS || 60; sim.on = false;   // arrived: the route ended; nothing chains on
+      log('Shot SEQ ' + g.row.seq + ' · ' + esc(g.row.street) + (ended ? ' · route ended' : '') + ' · next to drive (suggestion) SEQ ' + ((NAV.next() || {}).seq || '—'));
+      renderProd();
+    } else log('Back from the wrong turn');
+    render(NAV.update(null));
+  }
+}
+$('simGo').onclick = function () {
+  if (!NAV.target) { log('<span class="warn">Sim: press Route here on a pin first</span>'); return; }
+  if (sim.goal && sim.goal.kind === 'parcel' && String(sim.goal.row.seq) !== NAV.target) { sim.goal = null; sim.path = []; }
+  if (!sim.pos) { var t = NAV.bySeq[NAV.target]; var s = Q.get('start'); sim.pos = s ? s.split(',').map(Number) : [t.lat + 0.02, t.lng - 0.02]; }
+  sim.on = true; if (!sim.timer) sim.timer = setInterval(simTick, 250); log('Sim driving');
+};
+$('simPause').onclick = function () { sim.on = false; log('Sim paused'); };
+$('simWrong').onclick = function () {
+  if (!sim.pos) return;
+  // pick a road junction 700–1600 m away that is NOT on the current route
+  var cands = [];
+  for (var v = 0; v < G.nV; v++) { var d = RT.hav(sim.pos[0], sim.pos[1], G.lat[v], G.lng[v]);
+    if (d > 600 && d < 2000 && (!lastView || !lastView.route || RT.progressOn(lastView.route.coords, G.lat[v], G.lng[v], G.P, 0).offM > 300)) cands.push(v); }
+  if (!cands.length) { log('No side road found for a wrong turn here'); return; }
+  var best = cands[Math.floor(Math.random() * cands.length)];
+  sim.goal = { kind: 'detour' }; planTo(G.lat[best], G.lng[best], 'detour');
+  log('Wrong turn: driving away from the route');
+};
+// ════ REAL POSITION: the USB puck (Web Serial, same settings as desk.html §10) ═══
+async function puckConnect() {
+  if (!('serial' in navigator)) { $('gpsSt').textContent = 'The GPS puck needs Google Chrome or Microsoft Edge.'; return; }
+  try {
+    var port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x067B }, { usbVendorId: 0x1546 }, { usbVendorId: 0x10C4 }] });
+    await port.open({ baudRate: 4800 }); sim.on = false; $('gpsSt').innerHTML = '<span class="ok">GPS puck connected (4800 baud)</span>'; log('GPS puck connected');
+    var dec = new TextDecoder(), buf = '', rd = port.readable.getReader();
+    while (true) { var x = await rd.read(); if (x.done) break; buf += dec.decode(x.value, { stream: true });
+      var lines = buf.split(/\r?\n/); buf = lines.pop(); lines.forEach(function (l) { if (l.charAt(0) === '$') feed(l.trim()); }); }
+  } catch (e) { $('gpsSt').innerHTML = '<span class="bad">Puck: ' + esc(e.message) + '</span>'; }
+}
+$('puckBtn').onclick = puckConnect;
+$('geoBtn').onclick = function () {
+  if (!navigator.geolocation) return; sim.on = false;
+  navigator.geolocation.watchPosition(function (p) {
+    var c = p.coords, w = new Date(p.timestamp);
+    feed(RT.Nmea.rmc(c.latitude, c.longitude, c.speed != null ? c.speed * 2.23694 : 0, c.heading || 0, w));
+    $('gpsSt').textContent = 'Computer location · ±' + Math.round(c.accuracy) + ' m';
+  }, function (e) { $('gpsSt').textContent = 'Location: ' + e.message; }, { enableHighAccuracy: true, maximumAge: 2000 });
+};
+// In desk.html the camera's own closes mark parcels shot; on this test page the driver does.
+function markDone() { var k = NAV.target || SEL; if (!k) { log('Click a pin first'); return; } var ended = NAV.shot(k); if (ended) { sim.on = false; sim.goal = null; sim.path = []; }
+  log('Marked SEQ ' + k + ' shot' + (ended ? ' · route ended' : '')); render(NAV.update(null)); renderProd(); }
+$('doneBtn').onclick = markDone;
+document.addEventListener('keydown', function (e) { if ((e.key === 'd' || e.key === 'D') && e.target.tagName !== 'INPUT' && NAV) markDone(); });
+window.addEventListener('error', function (e) { log('<span class="bad">' + esc(e.message) + '</span>'); });
+boot();
+</script>
+</body>
+</html>
