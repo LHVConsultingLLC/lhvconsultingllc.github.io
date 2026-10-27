@@ -2,6 +2,23 @@
 <html lang="en">
 <head>
 <script>
+/* DESK PING (10/27): the office sees this laptop without asking anyone. First line of the page: "start"; then "map" when
+   the map is drawn, "error" on any page error, and "screen" every 30 s with what is on screen. Plain HTTPS beacon to the
+   server (works even when the live connection is half-dead). */
+(function(){
+  var U = 'https://us-central1-lhv-field-log.cloudfunctions.net/deskPing';
+  var drv = ''; try { drv = (new URLSearchParams(location.search).get('as') || localStorage.getItem('fieldlog_driver_id') || '').toUpperCase(); } catch (e) {}
+  window.__deskPing = function(stage, extra){ try { if (!drv) return; var b = { drv: drv, stage: stage, build: (window.DESK_BUILD || ''), path: location.pathname, online: navigator.onLine,
+      sw: (navigator.serviceWorker && navigator.serviceWorker.controller) ? navigator.serviceWorker.controller.scriptURL.split('/').pop() : '' };
+    for (var k in (extra || {})) b[k] = extra[k];
+    var body = JSON.stringify(b); if (!(navigator.sendBeacon && navigator.sendBeacon(U, new Blob([body], { type: 'text/plain' })))) fetch(U, { method: 'POST', body: body, keepalive: true, mode: 'no-cors' }).catch(function(){}); } catch (e) {} };
+  window.__deskPing('start');
+  window.addEventListener('error', function(e){ window.__deskPing('error', { err: (e.message || 'error') + ' @' + (e.lineno || '?') }); });
+  window.addEventListener('unhandledrejection', function(e){ window.__deskPing('error', { err: 'promise: ' + String((e.reason && (e.reason.message || e.reason)) || '?').slice(0, 150) }); });
+})();
+</script>
+
+<script>
 /* NO OFFLINE HELPER ON THIS PAGE (10/27, Mike's laptop): every page with a service worker installed hung on load on
    his tablet. This page uses none, and removes every one this site ever installed, before anything else runs. */
 try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ var w = r.active || r.waiting || r.installing; if (!(w && /\/map-sw\.js$/.test(w.scriptURL))) r.unregister(); }); }); } catch (e) {}
@@ -3258,5 +3275,22 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
 <script>document.write('<script src="desk/roadlabels.js?b=' + DESK_BUILD + '"><\/script>');</script>
 <script src="desk/ask.js"></script>
 <!-- (DIRECT LINE laptop ⇄ camera, desk/p2p.js: REMOVED 10/18 — the car router is retired.) -->
+<script>
+/* SCREEN REPORT every 30 s + "map" once the map is drawn (10/27) */
+(function(){
+  var sentMap = false;
+  function screen(){ try {
+    var st = document.getElementById('start'), su = document.getElementById('setup');
+    var pins = document.querySelectorAll('.leaflet-marker-icon').length;
+    var camAt = Math.max(Number(window._camHbSeenAt || 0), Number((window._camSync && window._camSync.at) || 0));
+    return { view: (st && getComputedStyle(st).display !== 'none') ? 'start' : (pins ? 'map' : 'blank'), rows: (window.state && state.seqs) ? state.seqs.length : 0, pins: pins,
+      sel: (window.state && state.currentSeq) || null, bucket: (window.state && state.job && state.job.bucket) || null,
+      link: !!(window.link && link.connected), camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
+      outbox: (window._outbox || []).length, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '' };
+  } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
+  function tick(){ var sc = screen(); if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
+  setTimeout(tick, 5000); setInterval(tick, 30000);
+})();
+</script>
 </body>
 </html>
