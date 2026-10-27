@@ -4,7 +4,7 @@
 <script>
 /* NO OFFLINE HELPER ON THIS PAGE (10/27, Mike's laptop): every page with a service worker installed hung on load on
    his tablet. This page uses none, and removes every one this site ever installed, before anything else runs. */
-try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); }); } catch (e) {}
+try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ var w = r.active || r.waiting || r.installing; if (!(w && /\/map-sw\.js$/.test(w.scriptURL))) r.unregister(); }); }); } catch (e) {}
 </script>
 
 <meta charset="UTF-8">
@@ -3244,7 +3244,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     var aer = await DB.get('kv', 'aerials:' + day.job.bucket), tl = await DB.get('kv', 'tiles:' + day.job.bucket);
     bootLinkAndMap();
   } else showStart();
-  if (false) navigator.serviceWorker.register('desk-sw.js', { scope: './desk' }).then(function(reg){
+  navigator.serviceWorker.register('/map-sw.js', { scope: '/' }).then(function(reg){
     // with signal, refresh the saved (offline) copy every load — Shift+reload never reaches the worker
     var ask = function(){ var w = reg.active || navigator.serviceWorker.controller; if (w && navigator.onLine) w.postMessage({ type: 'refresh-shell' }); };
     if (reg.active) ask(); else navigator.serviceWorker.ready.then(ask);
