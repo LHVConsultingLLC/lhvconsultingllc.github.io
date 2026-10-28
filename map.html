@@ -8,7 +8,9 @@
 (function(){
   var U = 'https://us-central1-lhv-field-log.cloudfunctions.net/deskPing';
   var drv = ''; try { drv = (new URLSearchParams(location.search).get('as') || localStorage.getItem('fieldlog_driver_id') || '').toUpperCase(); } catch (e) {}
-  window.__deskPing = function(stage, extra){ try { if (!drv) return; var b = { drv: drv, stage: stage, build: (window.DESK_BUILD || ''), path: location.pathname, online: navigator.onLine,
+  // a look-only page or an office test (?look=1 / ?as=) never reports as a driver (full audit 10/27 night #1)
+  var _quiet = /[?&](look=1|as=)/.test(location.search); try { if (sessionStorage.getItem('lhv_look') === '1') _quiet = true; } catch (e) {}
+  window.__deskPing = function(stage, extra){ try { if (!drv || _quiet) return; var b = { drv: drv, stage: stage, build: (window.DESK_BUILD || ''), path: location.pathname, online: navigator.onLine,
       sw: (navigator.serviceWorker && navigator.serviceWorker.controller) ? navigator.serviceWorker.controller.scriptURL.split('/').pop() : '' };
     for (var k in (extra || {})) b[k] = extra[k];
     var body = JSON.stringify(b); if (!(navigator.sendBeacon && navigator.sendBeacon(U, new Blob([body], { type: 'text/plain' })))) fetch(U, { method: 'POST', body: body, keepalive: true, mode: 'no-cors' }).catch(function(){}); } catch (e) {} };
@@ -842,7 +844,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p44';
+var DESK_BUILD = 'desk-p46';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1044,7 +1046,7 @@ function displayStatus(seq){
   return st;
 }
 var ST_LABEL = { pending: 'To drive', incomplete: 'Not closed', uploading: 'Uploading', rating: 'Rating…', complete: 'Driven', marked: 'Marked driven · waiting for the camera', worked: 'Worked' };
-function _isToday(l) { var d = String((l && l.driveDate) || '').trim(), t = String((state.job && state.job.date) || '').trim(); return !d || !t ? false : d === t; }
+function _isToday(l) { var d = String((l && l.driveDate) || '').trim().slice(0, 10), t = _lhvDate(); return !d ? false : d === t; }   // today, not the load date (audit round 3 #4)
 function _logsInCurrentFile() {
   var inFile = {}; (state.seqs || []).forEach(function(r){ if (r && r.seq) inFile[String(r.seq).trim()] = 1; });
   return Object.keys(state.logs || {}).filter(function(k){ var l = state.logs[k]; if (!l) return false; return inFile[String(l.seq != null ? l.seq : k).trim()] === 1; })
@@ -1142,6 +1144,7 @@ function FirebaseLink(){
           var _gap = Date.now() - _tick; _tick = Date.now();
           if (_gap > 75000) { _rtAt = Date.now(); }   // the laptop was asleep: a fresh check first, not a "dead link" (audit #7)
           if (!self.ready || !_sock) return;
+          if (LOOK && Q.get('livetest') !== '1') { _rtAt = Date.now(); _setConn(); return; }   // look-only: no beat written in a driver's session
           var t0 = Date.now();
           var _ack = function(){ _rtAt = Date.now(); _kicks = 0; _setConn(); };   // a refusal is an answer from the server too
           sess.child('deskBeat').set({ at: t0, build: DESK_BUILD }).then(_ack, _ack);
@@ -1597,7 +1600,7 @@ function _evidenceCloseSweep(){
     var shot = Number(l.photoCount || 0), conf = Number((_photoCounts && _photoCounts[k]) || 0);
     if (!(_effNoPhotos(l) ? true : (shot > 0 && conf >= shot))) return;
     _sweepQueued[k] = 1; n++;
-    queueAction(k, { closed: true, closedAt: Date.now(), touched: true, driveDate: l.driveDate || String(state.job.date || ''),
+    queueAction(k, { closed: true, closedAt: Date.now(), touched: true, driveDate: l.driveDate || _lhvDate(),
       unoccupied: l.unoccupied || 'N', boardedUp: l.boardedUp || 'N', burnedDown: l.burnedDown || 'N' }, 'AUTO-CLOSED ON EVIDENCE')
       .then(function(){ delete _sweepQueued[k]; });
     try { if (link && link.connected) link.update('heardLog', (function(o){ o['desk' + Date.now() + '_' + k] = { ts: Date.now(), seq: k, raw: '[AUTO-CLOSED ON EVIDENCE] (desk) build=' + l.build + ' photos=' + shot }; return o; })({})).catch(function(){}); } catch (e) {}
@@ -1940,7 +1943,7 @@ async function actCloseHere(){
   var n = Math.max(Number(_photoCounts[s] || 0), Number(l.photoCount || 0));
   if (n < 1) return;
   if (n < 3 && !(await confirmBox('Close SEQ ' + s + '?', 'It has only ' + n + ' photo' + (n === 1 ? '' : 's') + '. Every parcel needs 3–6.', 'Close with ' + n))) return;
-  queueAction(s, { closed: true, closedAt: Date.now(), touched: true, driveDate: l.driveDate || String((state.job && state.job.date) || ''), lowPhotoOverride: n < 3 ? true : null,
+  queueAction(s, { closed: true, closedAt: Date.now(), touched: true, driveDate: l.driveDate || _lhvDate(), lowPhotoOverride: n < 3 ? true : null,
     unoccupied: l.unoccupied || 'N', boardedUp: l.boardedUp || 'N', burnedDown: l.burnedDown || 'N' }, 'CLOSED FROM LAPTOP');
   toast('✓ SEQ ' + s + ' closed', 2500);
 }
@@ -2023,7 +2026,7 @@ function npSave(){
   var why = npComment(); if (!why) { _np.err = 'Pick Kids or Safety, or type the reason.'; renderNpPanel(); return; }
   var lu = String(r.landUse || '').trim();
   queueAction(s, { noPhotos: true, build: _np.rating, landUse: lu, comment: '[NO PHOTOS] ' + why,
-    closed: true, closedAt: Date.now(), driveDate: l.driveDate || String((state.job && state.job.date) || _lhvDate()), touched: true }, 'NO PHOTOS · rated ' + _np.rating);
+    closed: true, closedAt: Date.now(), driveDate: l.driveDate || _lhvDate(), touched: true }, 'NO PHOTOS · rated ' + _np.rating);
   toast('🚫 SEQ ' + s + ' — NO PHOTOS · rated ' + _np.rating.toFixed(1) + (lu ? '' : ' · no land use in the drive file'), 3500);
   npClose();
 }
@@ -3096,7 +3099,9 @@ function bootLinkAndMap(){
       ['set', 'update', 'remove', 'push', 'transaction'].forEach(function(m){
         if (typeof link[m] !== 'function') return;
         var real = link[m].bind(link);
-        link[m] = function(path){ return /^desk/.test(String(path || '')) ? real.apply(null, arguments) : Promise.resolve(null); };
+        // desk* reports only from the office's own live test (?livetest=1): a look-only page opened with a driver's key
+        // wrote that driver's laptop reports and answered office commands (full audit #7)
+        link[m] = function(path){ return (/^desk/.test(String(path || '')) && Q.get('livetest') === '1') ? real.apply(null, arguments) : Promise.resolve(null); };
       });
       try { var _lb = document.createElement('div'); _lb.id = 'look-banner'; _lb.textContent = 'LOOK-ONLY: explore freely. Nothing you do here changes your drive.';
         _lb.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;background:#5b2d91;color:#fff;font:800 12.5px system-ui;padding:3px 12px;border-radius:0 0 8px 8px;pointer-events:none';
@@ -3227,6 +3232,7 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
       var _ans = function(o){ try { if (window.link && link.set) return link.set('deskCmdDone', o); return firebase.database().ref('sessions/' + DRIVER + '/deskCmdDone').set(o); } catch (e) { return Promise.resolve(); } };
       _sub(function(v){ try {
         if (!v || !v.at || !v.do) return;
+        if (LOOK && Q.get('livetest') !== '1') return;   // a look-only page never answers the office for a driver
         var k = 'desk_cmd_done_at'; if (String(localStorage.getItem(k) || '') === String(v.at)) return;
         if (Date.now() - Number(v.at) > 12 * 3600e3) return;   // a stale one from another day
         localStorage.setItem(k, String(v.at));
@@ -3477,7 +3483,11 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     host.querySelector('.bar').onclick = function(){ _open = !_open; host.classList.toggle('open', _open); };
     host.querySelectorAll('.menu .c').forEach(function(el){ el.onclick = function(){
       var b = el.getAttribute('data-b'); if (el.getAttribute('data-k') !== 'td' || b === curB()) { _open = false; host.classList.remove('open'); return; }
-      _open = false; switchTo(b, 'tap'); }; });
+      _open = false;
+      // a tap never leaves unshipped or unsent work behind (full audit #3)
+      var _uns = Object.keys(state.logs || {}).some(function(k){ var l = state.logs[k]; return l && seqStatus(l, k) === 'complete' && !l.shipped && !_shippedSeqs[k]; });
+      if (_uns || (_outbox && _outbox.length)) { toast('Ship ' + niceCounty({ county: (state.job && state.job.county) || curB() }) + ' first. Then this switch works.', 4500); return; }
+      switchTo(b, 'tap'); }; });
   }
   async function switchTo(B, why){
     if (LOOK && Q.get('livetest') !== '1') { toast('Look-only: the county does not change', 2500); return false; }
@@ -3560,7 +3570,10 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
       // a county loaded today, or one on today's list, stays: the driver's own pick is never overridden
       var _sessB = '';
       try { if (ready() && DRIVER && !LOOK) _sessB = String((await withTimeout(firebase.database().ref('sessions/' + DRIVER + '/jobFolder').once('value'), 8000)).val() || '').split('/').pop(); } catch (e) {}
-      if (cur && (!_sessB || _sessB === cur) && (list.some(function(c){ return c.bucket === cur; }) || (state.job && state.job.date === today))) { _mornDone = today; preload(); return false; }
+      if (cur && (!_sessB || _sessB === cur) && (list.some(function(c){ return c.bucket === cur; }) || (state.job && state.job.date === today))) {
+        // the county stays — and it is TODAY's now: no "list is from yesterday" banner, closes dated today (full audit #2)
+        if (state.job && state.job.date !== today) { state.job.date = today; try { var _d0 = await DB.get('kv', 'day'); if (_d0 && _d0.job && _d0.job.bucket === cur) { _d0.job.date = today; await DB.put('kv', 'day', _d0); } } catch (e) {} try { renderAll(); publishJob(); } catch (e) {} }
+        _mornDone = today; preload(); return false; }
       if (cur && _sessB && _sessB !== cur) {   // the session moved to another county: open it once its sheet is saved (never mark done on a miss — audit #7)
         var _sc = list.concat((_sched && _sched.tomorrow) || []).filter(function(c){ return c.bucket === _sessB; })[0];
         if (!_sc) return false;
@@ -3569,8 +3582,10 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
         var _ok = await switchTo(_sessB, 'session'); if (_ok) { _mornDone = today; preload(); } return _ok;
       }
       // never move a laptop off a county with work still in flight (audit #6): photos uploading/held, or closes not shipped
-      if (cur) { var _cs = _camSync || {}, _unsh = Object.keys(state.logs || {}).some(function(k){ var l = state.logs[k]; return l && seqStatus(l, k) === 'complete' && !l.shipped && !_shippedSeqs[k]; });
-        if (Number(_cs.pending || 0) > 0 || Number(_cs.held || 0) > 0 || _unsh) { console.log('[today] staying on ' + cur + ': work still in flight'); return false; } }
+      // only photos actively uploading hold the move (audit round 3 #1): held frames are kept on purpose and outlive
+      // job switches, and unshipped closes are kept in _archive by publishJob — counting those parked laptops all day
+      if (cur) { var _cs = _camSync || {};
+        if (Number(_cs.pending || 0) > 0 && Date.now() - Number(_cs.at || 0) < 10 * 60e3) { console.log('[today] staying on ' + cur + ': photos uploading'); return false; } }
       if (cur && new Date().getHours() < 4) return false;   // never move a laptop off its county in the middle of the night
       var pick = null;
       try { if (ready() && DRIVER && !LOOK) { var jf = (await withTimeout(firebase.database().ref('sessions/' + DRIVER + '/jobFolder').once('value'), 8000)).val();
@@ -3604,7 +3619,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   setInterval(refresh, 15 * 60e3); window.addEventListener('online', function(){ setTimeout(refresh, 3000); });
 })();
 </script>
-<script src="desk/ask.js"></script>
+<script>document.write('<script src="desk/ask.js?b=' + DESK_BUILD + '"><\/script>');</script>
 <!-- (DIRECT LINE laptop ⇄ camera, desk/p2p.js: REMOVED 10/18 — the car router is retired.) -->
 <script>
 // MIC + SPEECH DIAGNOSTIC (desk-p43a/p44, 10/27 night: Mike's Ask Claude said "Didn't catch that" all day with the
@@ -3621,7 +3636,7 @@ window.__micDiag = async function(){
     try { var ac = new (window.AudioContext || window.webkitAudioContext)(); try { await ac.resume(); } catch (e) {}
       var an = ac.createAnalyser(); ac.createMediaStreamSource(st).connect(an); var buf = new Float32Array(an.fftSize), peak = 0, t0 = Date.now();
       while (Date.now() - t0 < 3000) { an.getFloatTimeDomainData(buf); for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i])); await new Promise(function(r){ setTimeout(r, 100); }); }
-      out.level = { peak: Math.round(peak * 10000) / 10000, ctx: ac.state }; try { ac.close(); } catch (e) {} } catch (e) { out.levelErr = String(e && e.message || e); }
+      /* started remotely, Chrome may keep the meter paused: peak 0 then means unknown, not silence */ out.level = { peak: Math.round(peak * 10000) / 10000, ctx: ac.state, trusted: ac.state === 'running' }; try { ac.close(); } catch (e) {} } catch (e) { out.levelErr = String(e && e.message || e); }
     out.trackMutedAfter = tr.muted; st.getTracks().forEach(function(t){ t.stop(); });
   } catch (e) { out.gum = String((e && e.name) || '') + ': ' + String((e && e.message) || e); }
   try {

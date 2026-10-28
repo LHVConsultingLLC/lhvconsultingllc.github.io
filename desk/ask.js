@@ -88,9 +88,11 @@
     }).then(function(r){ return r.json(); }).then(function(j){
       clearTimeout(slow);
       if (!j || !j.ok) { render(q, 'Heard, give me a second.', null, 'Claude · the server did not answer (' + ((j && j.error) || 'no answer') + '); it comes back shortly'); return; }
-      st.lastOk = Date.now(); st.lastErr = '';
+      st.lastOk = Date.now(); st.lastErr = ''; askServer._tries = 0;
       render(q, j.say, j.action, 'Claude · checked your laptop, camera and the live file · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' + (AS ? ' · as ' + AS : ''));
-    }).catch(function(e){ clearTimeout(slow); st.lastErr = 'send: ' + String(e && e.message || e).slice(0, 60); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80)); });
+    }).catch(function(e){ clearTimeout(slow); st.lastErr = 'send: ' + String(e && e.message || e).slice(0, 60); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80));
+      // a question is never dropped (full audit #5): kept and sent again when the link answers — on 'online' or in 30 s, up to 3 times
+      try { pending = q; var _tries = (askServer._tries = (askServer._tries || 0) + 1); if (_tries <= 3) setTimeout(function(){ if (pending === q) { pending = null; askServer(q); } }, 30000); } catch (e2) {} });
   }
   // ── THE OFFICE ANSWER (Dustin 10/26): a HOLD question is picked up by the Field App Claude; its answer lands in
   // sessions/<D>/askReply and shows up (and is spoken) in this same box, so the driver never has to look elsewhere.
