@@ -115,9 +115,15 @@
     if (!R) { L.textContent = 'This laptop can\'t listen. Type your question below.'; typeIt('no-speech-api'); return; }
     var r = new R(); r.lang = 'en-US'; r.interimResults = true; r.maxAlternatives = 1;
     L.className = 'askc-listen on'; L.textContent = 'Listening…'; fab.classList.add('on');
-    var done = false;
+    var done = false, heardAudio = false, heardSpeech = false;
+    // 10/27 Mike: "Didn't catch that" every time, mic permission ON — the mic gave no sound and nothing recorded why.
+    // Now the laptop reports WHICH case it was (no sound from the mic vs sound but no words), so the office can see it.
+    r.onaudiostart = function(){ heardAudio = true; }; r.onspeechstart = function(){ heardSpeech = true; };
     r.onresult = function(e){ var t = ''; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; L.textContent = '“' + t + '”'; if (e.results[e.results.length - 1].isFinal && !done) { done = true; askServer(t.trim()); } };
-    r.onend = function(){ L.className = 'askc-listen'; fab.classList.remove('on'); if (!done && /Listening/.test(L.textContent)) L.textContent = 'Didn\'t catch that. Tap the button and ask again.'; };
+    r.onend = function(){ L.className = 'askc-listen'; fab.classList.remove('on');
+      if (!done && /Listening/.test(L.textContent)) {
+        L.textContent = heardAudio ? 'Didn\'t catch the words. Type your question below, or tap and ask again.' : 'The microphone sent no sound. Type your question below.';
+        typeIt(heardAudio ? (heardSpeech ? 'speech-no-words' : 'audio-no-speech') : 'mic-no-sound'); } };
     r.onerror = function(ev){ var e = (ev && ev.error) || 'error'; L.textContent = e === 'not-allowed' ? 'The microphone is blocked on this laptop. Type your question below.' : e === 'network' ? 'No internet for listening right now. Type your question below — it goes out when the signal is back.' : 'Didn\'t catch that. Tap and ask again, or type it below.'; typeIt(e); };
     try { r.start(); } catch (e) { L.textContent = 'Type your question below.'; typeIt('start: ' + String(e && e.message || e).slice(0, 40)); }
   }

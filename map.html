@@ -842,7 +842,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p43a';
+var DESK_BUILD = 'desk-p44';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1053,14 +1053,18 @@ function _logsInCurrentFile() {
 function _drivenOnAnEarlierDay(seq) {
   var _shared = _jobDriven && _jobDriven[String(seq)];
   // "date|parcel" (server 10/27): seqs renumber nightly, so an entry for another PARCEL under this seq number never hides this one
-  if (_shared) { var td = String((state.job && state.job.date) || '').trim(), _sp = String(_shared).split('|')[1] || '', _rw = _sp ? _rowFor(seq) : null;
-    var _np = function(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
-    if (!(_sp && _rw && _np(_rw.parcelId) !== _np(_sp)) && _shared !== '1' && td && String(_shared).slice(0,10) !== td) return true; }
+  // A bare date (written before 10/27 night) is keyed by seq alone, and seqs renumber nightly — it is ignored; only
+  // "date|parcel" entries that name THIS row's parcel hide it (audit #9).
+  // compared with TODAY, not the date the county was loaded (audit 10/27 night #2: a county loaded yesterday and driven
+  // today hid every parcel the minute the server wrote "today|pid")
+  if (_shared && String(_shared).indexOf('|') > 0) { var td = _lhvDate(), _sp = String(_shared).split('|')[1] || '', _rw = _rowFor(seq);
+    var _np = function(v){ return String(v || '').toUpperCase().replace(/\s#\d+\s*$/, '').replace(/[^A-Z0-9]/g, ''); };
+    if (_sp && _rw && _np(_rw.parcelId) === _np(_sp) && td && String(_shared).slice(0,10) !== td) return true; }
   var l = state.logs[seq]; if (!l) return false;
   try { var _jy = String((state.job && state.job.date) || '').slice(0, 4), _ly = String(l.driveDate || '').slice(0, 4); if (_jy && _ly && _ly < _jy) return false; } catch (e) {}
   var _px = Number(l.photoCount || 0);
   var _rateOnly = /DO NOT RE-?DRIVE/i.test(String(l.needsReview || l.NeedsReview || ''));
-  var d0 = String(l.driveDate || '').trim(), t0 = String((state.job && state.job.date) || '').trim();
+  var d0 = String(l.driveDate || '').trim().slice(0, 10), t0 = _lhvDate();
   if ((_px > 0 || _rateOnly) && d0 && t0 && d0 !== t0) return true;
   if (seqStatus(l, seq) !== 'complete') return false;
   return !!(d0 && t0 && d0 !== t0);
@@ -1099,6 +1103,20 @@ function _jobKey() {   // same key the phone uses for jobDriven/<key> (bucket mo
 //                  mode Firebase is never even loaded, so a test cannot write live.
 // ════════════════════════════════════════════════════════════════════════════
 var link = null;
+// Firebase libraries + app, loaded once (desk-p43): the morning auto-open signs in before any county is open, and the
+// link reuses that same app instead of loading the libraries a second time.
+var _FB_CFG = { apiKey: "AIzaSyBJQb427GLIUdLt9kVMPEUjY_ycOMkTqTM", authDomain: "lhv-field-log.firebaseapp.com",
+  databaseURL: "https://lhv-field-log-default-rtdb.firebaseio.com", projectId: "lhv-field-log",
+  storageBucket: "lhv-field-log.firebasestorage.app", messagingSenderId: "686638696511", appId: "1:686638696511:web:4fef9ad4969c019e42508a" };
+var _fbLibsP = null;
+function _fbLibs(){
+  if (_fbLibsP) return _fbLibsP;
+  var V = 'https://www.gstatic.com/firebasejs/10.13.0/';
+  var ls = function(src){ return new Promise(function(res, rej){ var el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); };
+  _fbLibsP = ls(V + 'firebase-app-compat.js').then(function(){ return ls(V + 'firebase-database-compat.js'); }).then(function(){ return ls(V + 'firebase-auth-compat.js'); });
+  _fbLibsP.catch(function(){ _fbLibsP = null; });
+  return _fbLibsP;
+}
 function FirebaseLink(){
   var self = { kind: 'firebase', connected: false, ready: false, authFailed: false, _subs: [] };
   var sess = null, db = null, readyQ = [];
@@ -1106,10 +1124,9 @@ function FirebaseLink(){
   var V = 'https://www.gstatic.com/firebasejs/10.13.0/';
   self.start = function(driver, onChange){
     self._onChange = onChange;
-    loadScript(V + 'firebase-app-compat.js').then(function(){ return loadScript(V + 'firebase-database-compat.js'); })
-      .then(function(){ return loadScript(V + 'firebase-auth-compat.js'); })
+    _fbLibs()
       .then(function(){
-        firebase.initializeApp({ apiKey: "AIzaSyBJQb427GLIUdLt9kVMPEUjY_ycOMkTqTM", authDomain: "lhv-field-log.firebaseapp.com",
+        if (!(firebase.apps && firebase.apps.length)) firebase.initializeApp({ apiKey: "AIzaSyBJQb427GLIUdLt9kVMPEUjY_ycOMkTqTM", authDomain: "lhv-field-log.firebaseapp.com",
           databaseURL: "https://lhv-field-log-default-rtdb.firebaseio.com", projectId: "lhv-field-log",
           storageBucket: "lhv-field-log.firebasestorage.app", messagingSenderId: "686638696511", appId: "1:686638696511:web:4fef9ad4969c019e42508a" });
         db = firebase.database(); sess = db.ref('sessions/' + driver);
@@ -1120,14 +1137,17 @@ function FirebaseLink(){
         var _sock = false, _rtAt = Date.now(), _kicks = 0;
         var _setConn = function(){ var c = _sock && (Date.now() - _rtAt < 90000); if (c !== self.connected) { self.connected = c; onChange(); } };
         db.ref('.info/connected').on('value', function(s){ _sock = !!s.val(); if (_sock) _rtAt = Math.max(_rtAt, Date.now() - 60000); self.connected = _sock; onChange(); });
+        var _tick = Date.now(), _lastKick = 0;
         setInterval(function(){
+          var _gap = Date.now() - _tick; _tick = Date.now();
+          if (_gap > 75000) { _rtAt = Date.now(); }   // the laptop was asleep: a fresh check first, not a "dead link" (audit #7)
           if (!self.ready || !_sock) return;
           var t0 = Date.now();
           var _ack = function(){ _rtAt = Date.now(); _kicks = 0; _setConn(); };   // a refusal is an answer from the server too
           sess.child('deskBeat').set({ at: t0, build: DESK_BUILD }).then(_ack, _ack);
           _setConn();
-          if (Date.now() - _rtAt > 90000 && _kicks < 20) {
-            _kicks++; self.reconnects = (self.reconnects || 0) + 1;
+          if (Date.now() - _rtAt > 90000 && (_kicks < 20 || Date.now() - _lastKick > 5 * 60000)) {   // never gives up: after 20 tries, every 5 min
+            _kicks++; _lastKick = Date.now(); self.reconnects = (self.reconnects || 0) + 1;
             try { db.goOffline(); setTimeout(function(){ try { db.goOnline(); } catch (e) {} }, 1500); } catch (e) {}
             _rtAt = Date.now() - 30000;   // give the new socket a minute before the next kick
           }
@@ -1291,6 +1311,7 @@ function _jobMeta(){ var j = state.job || {};   // bucket mode: company is the b
   return { company: null, state: j.state || null, county: j.county || null, year: j.year || String(j.date||'').split('-')[0] || null, bucket: j.bucket || null }; }
 function _jobSig(){ return state.job ? (state.job.bucket + '|' + state.job.date) : null; }
 function publishJob(){
+  if (LOOK) return;   // look-only never publishes a job (its writes are dropped anyway) — and never follows/guards the live session
   if (!link || !link.connected || !state.job || !state.job.bucket || _jobPublishing) return;
   var sig = _jobSig(); if (_jobPublishedFor === sig) return;
   _jobPublishing = true;
@@ -1309,9 +1330,17 @@ function publishJob(){
       throw new Error('cached job differs from live job');
     }
     if (prev && String(prev) !== jf) {
-      console.log('[desk] job changed (' + prev + ' -> ' + jf + '): session state wiped, same as the field-log phone');
-      wipe = [link.set('logs', null), link.set('shipped', null), link.set('aiComments', null), link.set('aiRatings', null), link.set('aiRequests', null),
-              link.update('', { photoCounts: {}, resetNonce: Date.now() })];
+      // NOTHING IS WIPED BEFORE IT IS KEPT (desk-p43, audit 10/27 night): a county change used to clear the session's
+      // logs, ship stamps and AI ratings outright — unshipped closes from the old county were lost with them. Now the
+      // old county's records are copied to _archive first, and if that copy does not land, nothing is cleared (the
+      // publish retries on the next change).
+      console.log('[desk] job changed (' + prev + ' -> ' + jf + '): old session kept in _archive, then cleared');
+      var _ak = '_archive/switch_' + String(prev).split('/').pop().replace(/[.#$\[\]\/]/g, '_') + '_' + Date.now();
+      return withTimeout(Promise.all(['logs', 'shipped', 'aiComments', 'aiRatings', 'photoCounts'].map(function(k){ return link.once(k); })), 20000)
+        .then(function(v){ return (v[0] || v[1]) ? withTimeout(link.set(_ak, { from: String(prev), to: jf, at: Date.now(), build: DESK_BUILD,
+            logs: v[0] || null, shipped: v[1] || null, aiComments: v[2] || null, aiRatings: v[3] || null, photoCounts: v[4] || null }), 20000) : null; })
+        .then(function(){ return withTimeout(Promise.all([link.set('logs', null), link.set('shipped', null), link.set('aiComments', null), link.set('aiRatings', null), link.set('aiRequests', null),
+              link.update('', { photoCounts: {}, resetNonce: Date.now() })]), 20000); });
     }
     return withTimeout(Promise.all(wipe), 20000);
   }).then(function(){
@@ -3143,6 +3172,8 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
   var _waitUntil = 0, _pending = false;
   function idle(){ try {
     if (_camOpen) return false;
+    if (_modalResolve) return false;                                    // a box is open (e.g. "Ship N parcels?") — audit #5
+    var _sb = $('ship-btn'); if (_sb && _sb.disabled) return false;      // a SHIP is in flight
     var rs = $('route-slot'); if (rs && rs.style.display !== 'none') return false;
     if (Gps.pos && Gps.fixAt && Date.now() - Gps.fixAt < 60000 && Number(Gps.speedKn || 0) * 1.1508 >= 3) return false;
     return true; } catch (e) { return false; } }
@@ -3186,15 +3217,21 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
   // sessions/<DRIVER>/deskCmd = { at, do: 'reload' | 'sheet' }. 'reload' reloads at the first idle moment;
   // 'sheet' pulls the live drive file from the server now (loads between parcels). Each command runs once
   // (localStorage), and the laptop answers at sessions/<DRIVER>/deskCmdDone. Nobody texts a driver to refresh.
+  // desk-p44: wired even on the start screen (no county open = no link): straight through the signed-in Firebase app
   var _cmdWire = setInterval(function(){
-    try { if (!window.link || !link.on || !link.connected) return; clearInterval(_cmdWire);
-      link.on('deskCmd', function(v){ try {
+    try {
+      var _viaLink = window.link && link.on && link.connected;
+      var _viaApp = !_viaLink && window.firebase && firebase.apps && firebase.apps.length && firebase.auth && firebase.auth().currentUser && DRIVER;
+      if (!_viaLink && !_viaApp) return; clearInterval(_cmdWire);
+      var _sub = _viaLink ? function(fn){ link.on('deskCmd', fn); } : function(fn){ firebase.database().ref('sessions/' + DRIVER + '/deskCmd').on('value', function(sn){ fn(sn.val()); }); };
+      var _ans = function(o){ try { if (window.link && link.set) return link.set('deskCmdDone', o); return firebase.database().ref('sessions/' + DRIVER + '/deskCmdDone').set(o); } catch (e) { return Promise.resolve(); } };
+      _sub(function(v){ try {
         if (!v || !v.at || !v.do) return;
         var k = 'desk_cmd_done_at'; if (String(localStorage.getItem(k) || '') === String(v.at)) return;
         if (Date.now() - Number(v.at) > 12 * 3600e3) return;   // a stale one from another day
         localStorage.setItem(k, String(v.at));
-        try { link.set('deskCmdDone', { at: Date.now(), cmdAt: v.at, do: v.do, build: DESK_BUILD }).catch(function(){}); } catch (e) {}
-        if (v.do === 'diag') window.__micDiag && window.__micDiag();   // desk-p43a: office mic/speech diagnostic (reads only, no screen change)
+        try { _ans({ at: Date.now(), cmdAt: v.at, do: v.do, build: DESK_BUILD }).catch(function(){}); } catch (e) {}
+        if (v.do === 'diag') { if (window.__micDiag) window.__micDiag(); }   // office mic/speech diagnostic: reads only, nothing on screen
         else if (v.do === 'reload') reloadWhenIdle('from the office');
         else if (v.do === 'sheet' && window.deskAutoSheet) { (async function(){ try { var d = await DB.get('kv', 'day'); if (d) { d.sheetReadyAt = 0; await DB.put('kv', 'day', d); } } catch (e) {} window.deskAutoSheet('office'); })(); }
       } catch (e) {} });
@@ -3350,6 +3387,8 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     var aer = await DB.get('kv', 'aerials:' + day.job.bucket), tl = await DB.get('kv', 'tiles:' + day.job.bucket);
     bootLinkAndMap();
   } else showStart();
+  // desk-p43: the morning opens itself (no folder, no "Load drive file") — see _todayMorning in the TODAY script
+  (function(had){ var n = 0, go = function(){ if (window._todayMorning) { if (!MOCK || /[?&]daytest=1/.test(location.search)) window._todayMorning(); } else if (n++ < 50) setTimeout(go, 200); }; setTimeout(go, 300); })(!!(state.job && state.job.bucket));
   navigator.serviceWorker.register('/map-sw.js', { scope: '/' }).then(function(reg){
     // with signal, refresh the saved (offline) copy every load — Shift+reload never reaches the worker
     var ask = function(){ var w = reg.active || navigator.serviceWorker.controller; if (w && navigator.onLine) w.postMessage({ type: 'refresh-shell' }); };
@@ -3376,11 +3415,13 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   var DAY_URL = 'https://us-central1-lhv-field-log.cloudfunctions.net/driverDay';
   var SHEET = 'https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet';
   var _sched = null, _busy = false, _open = false, _nextLayer = null, _nextFor = '';
-  function ready(){ return !LOOK && window.firebase && firebase.auth && firebase.auth().currentUser; }
-  async function post(url, body){
+  function ready(){ return window.firebase && firebase.auth && firebase.auth().currentUser; }   // LOOK too: these are reads; session writes stay blocked by the LOOK link
+  async function post(url, body, ms){   // every call has a time limit (a half-dead link must never hang the morning)
     var user = firebase.auth().currentUser; if (!user) return null;
     var as = (Q.get('as') || '').toUpperCase(); body.idToken = await user.getIdToken(); if (as) body.drv = as;
-    return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { ac && ac.abort(); } catch (e) {} }, ms || 60000);
+    try { return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac ? ac.signal : undefined })).json(); }
+    finally { clearTimeout(tm); }
   }
   function b64buf(b64){ var bin = atob(b64), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; }
   function niceCounty(c){ return String(c.county || c.bucket).replace(/^[A-Z]{2}\s*-\s*/, ''); }
@@ -3388,27 +3429,32 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
 
   async function refresh(){
     if (!ready() || navigator.onLine === false) return;
-    try { var r = await post(DAY_URL, {}); if (r && r.ok) { _sched = r; await DB.put('kv', 'sched', r); render(); preload(); } } catch (e) {}
+    try { var r = await post(DAY_URL, {}); if (r && r.ok) { _sched = r; await DB.put('kv', 'sched', r); render(); await preload(); } } catch (e) {}
   }
-  async function preload(){   // every scheduled county saved on this laptop while there is signal
-    if (_busy || !_sched) return; _busy = true;
+  var _busyP = null;
+  function preload(){ if (_busyP) return _busyP; _busyP = preload1().then(function(){ _busyP = null; }, function(){ _busyP = null; }); return _busyP; }
+  async function preloadOne(c, sheetOnly){   // one county's sheet + small kit; its own failure never stops the others
+    var B = c.bucket;
     try {
-      var all = (_sched.today || []).concat(_sched.tomorrow || []);
-      for (var i = 0; i < all.length; i++) { var c = all[i], B = c.bucket;
         var have = await DB.get('kv', 'schedSheet:' + B);
         if (!have || Number(have.readyAt || 0) < Number(c.readyAt || 0)) {
           var r = await post(SHEET, { bucket: B, haveReadyAt: 0 });
           if (r && r.ok && r.ready && r.b64) { var seqs = parseDriveFile(b64buf(r.b64).buffer);
             await DB.put('kv', 'schedSheet:' + B, { b64: r.b64, readyAt: Number(r.readyAt), rows: seqs.length, at: Date.now() }); } }
+        if (sheetOnly) return;   // the morning opens the county on the sheet alone; outlines/roads/limits follow
         if (!(await DB.get('kv', 'bounds:' + B))) { var k1 = await post(SHEET, { bucket: B, kind: 'boundaries' });
           if (k1 && k1.b64) await DB.put('kv', 'bounds:' + B, JSON.parse(new TextDecoder().decode(b64buf(k1.b64)))); }
         if (!(await DB.get('kv', 'roads:' + B))) { var k2 = await post(SHEET, { bucket: B, kind: 'roads' });
           if (k2 && k2.b64) await DB.put('kv', 'roads:' + B, new Blob([b64buf(k2.b64)], { type: 'application/json' })); }
         if (!(await DB.get('kv', 'speedlimits:' + B))) { var k3 = await post(SHEET, { bucket: B, kind: 'speedlimits' });
           if (k3 && k3.b64) await DB.put('kv', 'speedlimits:' + B, { text: new TextDecoder().decode(b64buf(k3.b64)), size: 0, mod: 0, at: Date.now() }); }
-        render();
-      }
-    } catch (e) { console.warn('today preload', e); }
+    } catch (e) { console.warn('today preload ' + B, e); }
+    render();
+  }
+  async function preload1(){   // every scheduled county saved on this laptop while there is signal
+    if (_busy || !_sched) return; _busy = true;
+    try { var all = (_sched.today || []).concat(_sched.tomorrow || []); for (var i = 0; i < all.length; i++) await preloadOne(all[i]); }
+    catch (e) { console.warn('today preload', e); }
     _busy = false; render(); drawNext();
   }
   function curB(){ return state.job && state.job.bucket ? String(state.job.bucket) : ''; }
@@ -3434,6 +3480,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
       _open = false; switchTo(b, 'tap'); }; });
   }
   async function switchTo(B, why){
+    if (LOOK && Q.get('livetest') !== '1') { toast('Look-only: the county does not change', 2500); return false; }
     if (_camOpen) { toast('Finish the parcel on the camera first (STOP), then it switches.', 3500); return false; }
     var s = await DB.get('kv', 'schedSheet:' + B); if (!s || !s.b64) { toast('That county is still saving to this laptop.', 3000); return false; }
     var seqs = parseDriveFile(b64buf(s.b64).buffer); if (!seqs || !seqs.length) return false;
@@ -3466,6 +3513,91 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   window._todayRender = function(){ render(); drawNext(); };
   window._todayOpen = function(B){ B = String(B || '').toUpperCase(); return DB.get('kv', 'schedSheet:' + B).then(function(x){ return (x && x.b64) ? switchTo(B, 'session') : false; }); };
   window._todaySet = function(sch){ _sched = sch; render(); drawNext(); };   // the harness / mock preview only
+  // ── THE MORNING OPENS ITSELF (desk-p43, Dustin 10/27: "open the map, the county is already there" — for a new driver
+  // or a wiped laptop too). On every page open: a laptop with no county of its own signs in with the driver's key,
+  // gets today's counties, saves them and opens one. A laptop still on a county that is not on today's schedule (and
+  // was loaded on an earlier day) moves to today's. A county loaded today, or one that is on today's list, stays —
+  // the driver's own pick is never overridden. With no signal it opens today's county from what is saved here.
+  async function signInEarly(){
+    var key = null; try { key = localStorage.getItem('lhv_driver_key'); } catch (e) {}
+    if (!key || MOCK || navigator.onLine === false) return;
+    await _fbLibs(); if (!(firebase.apps && firebase.apps.length)) firebase.initializeApp(_FB_CFG);
+    // the saved sign-in comes back a moment after the libraries load: wait for it before signing in again (audit #10)
+    await new Promise(function(res){ var u = firebase.auth().onAuthStateChanged(function(){ try { u(); } catch (e) {} res(); }); setTimeout(res, 5000); });
+    var cu = firebase.auth().currentUser;
+    if (cu && !window.__newKeyLink) return;
+    if (cu && window.__newKeyLink) { try { await firebase.auth().signOut(); } catch (e) {} }
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { ac && ac.abort(); } catch (e) {} }, 20000);
+    try {
+      var j = await (await fetch('https://us-central1-lhv-field-log.cloudfunctions.net/driverAuth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key }), signal: ac ? ac.signal : undefined })).json();
+      if (j && j.ok && j.token) { await firebase.auth().signInWithCustomToken(j.token); window.__newKeyDone = true; }   // the link's key is the one signed in: no second sign-out
+    } finally { clearTimeout(tm); }
+  }
+  // Today's counties from a saved schedule, by each row's own dates (audit #3): a schedule saved last night lists a
+  // county under "today" OR "tomorrow"; what counts is whether today falls inside its from..to.
+  function listFor(today){
+    if (!_sched) return [];
+    if (_sched.date === today) return _sched.today || [];
+    var seen = {}, out = [];
+    (_sched.today || []).concat(_sched.tomorrow || []).forEach(function(c){ if (!c || seen[c.bucket]) return;
+      var f = String(c.from || ''), t = String(c.to || ''); if ((!f || f <= today) && (!t || t >= today)) { seen[c.bucket] = 1; out.push(c); } });
+    return out;
+  }
+  var _mornDone = '', _mornBusy = false;
+  window._todayMorning = async function(){
+    if (LOOK && Q.get('livetest') !== '1') return false;   // look-only never changes this laptop's county (audit #8)
+    if (_mornBusy || _camOpen) return false; _mornBusy = true;
+    try {
+      var today = _lhvDate(), online = navigator.onLine !== false;
+      if (!ready()) { try { await signInEarly(); } catch (e) {} }
+      if (ready()) { var _who = String(firebase.auth().currentUser.uid || '').replace(/^driver_/, '');   // the KEY decides who this is
+        if (_who && _who !== 'DS' && DRIVER !== _who) { DRIVER = _who; try { localStorage.setItem('fieldlog_driver_id', _who); } catch (e) {} } }
+      if (ready() && online) { try { var r = await post(DAY_URL, {}, 30000); if (r && r.ok) { _sched = r; await DB.put('kv', 'sched', r); render(); } } catch (e) {} }
+      if (!_sched) { try { _sched = await DB.get('kv', 'sched'); } catch (e) {} }
+      var list = listFor(today);
+      if (!list.length) return false;
+      var cur = curB();
+      // a county loaded today, or one on today's list, stays: the driver's own pick is never overridden
+      var _sessB = '';
+      try { if (ready() && DRIVER && !LOOK) _sessB = String((await withTimeout(firebase.database().ref('sessions/' + DRIVER + '/jobFolder').once('value'), 8000)).val() || '').split('/').pop(); } catch (e) {}
+      if (cur && (!_sessB || _sessB === cur) && (list.some(function(c){ return c.bucket === cur; }) || (state.job && state.job.date === today))) { _mornDone = today; preload(); return false; }
+      if (cur && _sessB && _sessB !== cur) {   // the session moved to another county: open it once its sheet is saved (never mark done on a miss — audit #7)
+        var _sc = list.concat((_sched && _sched.tomorrow) || []).filter(function(c){ return c.bucket === _sessB; })[0];
+        if (!_sc) return false;
+        if (!(await saved(_sessB)).sheet && ready() && online) await preloadOne(_sc, true);
+        if (!(await saved(_sessB)).sheet) return false;
+        var _ok = await switchTo(_sessB, 'session'); if (_ok) { _mornDone = today; preload(); } return _ok;
+      }
+      // never move a laptop off a county with work still in flight (audit #6): photos uploading/held, or closes not shipped
+      if (cur) { var _cs = _camSync || {}, _unsh = Object.keys(state.logs || {}).some(function(k){ var l = state.logs[k]; return l && seqStatus(l, k) === 'complete' && !l.shipped && !_shippedSeqs[k]; });
+        if (Number(_cs.pending || 0) > 0 || Number(_cs.held || 0) > 0 || _unsh) { console.log('[today] staying on ' + cur + ': work still in flight'); return false; } }
+      if (cur && new Date().getHours() < 4) return false;   // never move a laptop off its county in the middle of the night
+      var pick = null;
+      try { if (ready() && DRIVER && !LOOK) { var jf = (await withTimeout(firebase.database().ref('sessions/' + DRIVER + '/jobFolder').once('value'), 8000)).val();
+        // the driver's own session county wins when it is anywhere on his schedule (today or tomorrow): he already moved
+        // to it, and the cached-day guard (publishJob) would follow it anyway — never open one county then flip
+        var sb = String(jf || '').split('/').pop(), _sch = list.concat((_sched && _sched.tomorrow) || []);
+        if (_sch.some(function(c){ return c.bucket === sb; })) { pick = sb; if (!list.some(function(c){ return c.bucket === sb; })) list = list.concat(_sch.filter(function(c){ return c.bucket === sb; })); } } } catch (e) {}
+      if (pick && !(await saved(pick)).sheet && ready() && online) await preloadOne(list.filter(function(c){ return c.bucket === pick; })[0], true);
+      if (pick && !(await saved(pick)).sheet) pick = null;
+      for (var i = 0; !pick && i < list.length; i++) {   // the county it opens is fetched FIRST (audit #4); the rest after
+        if (!(await saved(list[i].bucket)).sheet && ready() && online) await preloadOne(list[i], true);
+        if ((await saved(list[i].bucket)).sheet) pick = list[i].bucket;
+      }
+      if (!pick) return false;   // nothing loadable yet: tried again in a minute, on signal, and on wake
+      if (_sched.date && _sched.date < today) _sched = { date: today, today: list, tomorrow: [] };
+      var ok = await switchTo(pick, 'morning');
+      if (ok) _mornDone = today;
+      preload();
+      return ok;
+    } catch (e) { console.warn('today morning', e); return false; }
+    finally { _mornBusy = false; }
+  };
+  // not only at page load (audit #2): a laptop left open overnight, waking from sleep, or getting signal back
+  setInterval(function(){ if (_mornDone !== _lhvDate()) window._todayMorning(); }, 60000);
+  window.addEventListener('online', function(){ if (_mornDone !== _lhvDate()) setTimeout(function(){ window._todayMorning(); }, 4000); });
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && _mornDone !== _lhvDate()) setTimeout(function(){ window._todayMorning(); }, 2000); });
+
   setInterval(function(){ if (_sched && !_open) render(); drawNext(); }, 10000);   // keep "left" current
   DB.get('kv', 'sched').then(function(r){ if (r) { _sched = r; render(); drawNext(); } }).catch(function(){});
   var wire = setInterval(function(){ if (ready()) { clearInterval(wire); refresh(); } }, 2000);
@@ -3475,27 +3607,10 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
 <script src="desk/ask.js"></script>
 <!-- (DIRECT LINE laptop ⇄ camera, desk/p2p.js: REMOVED 10/18 — the car router is retired.) -->
 <script>
-/* SCREEN REPORT every 30 s + "map" once the map is drawn (10/27) */
-(function(){
-  var sentMap = false;
-  function screen(){ try {
-    var st = document.getElementById('start'), su = document.getElementById('setup');
-    var pins = document.querySelectorAll('.leaflet-marker-icon').length;
-    var camAt = Math.max(Number(window._camHbSeenAt || 0), Number((window._camSync && window._camSync.at) || 0));
-    return { view: (st && getComputedStyle(st).display !== 'none') ? 'start' : (pins ? 'map' : 'blank'), rows: (window.state && state.seqs) ? state.seqs.length : 0, pins: pins,
-      sel: (window.state && state.currentSeq) || null, bucket: (window.state && state.job && state.job.bucket) || null,
-      link: !!(window.link && link.connected), camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
-      outbox: (window._outbox || []).length, ask: window.__askState || null, build: window.DESK_BUILD || '', rc: (window.link && link.reconnects) || 0, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '' };
-  } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
-  function tick(){ var sc = screen(); if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
-  setTimeout(tick, 5000); setInterval(tick, 30000);
-})();
-</script>
-<script>
-// MIC + SPEECH DIAGNOSTIC (desk-p43a, 10/27 night: Mike's Ask Claude "Didn't catch that" all day with the microphone
-// allowed). Run from the office (deskCmd {do:'diag'}); nothing shows on screen and nothing is kept but the report in
-// sessions/<D>/deskDiag: the browser, the microphones Windows offers, the one the browser opens (muted? live?), and
-// every step the speech service takes.
+// MIC + SPEECH DIAGNOSTIC (desk-p43a/p44, 10/27 night: Mike's Ask Claude said "Didn't catch that" all day with the
+// microphone allowed). Run from the office (deskCmd {do:'diag'}); nothing shows on screen, nothing is kept but the
+// report at sessions/<D>/deskDiag: the browser, the microphones Windows offers, the one the browser opens (muted?
+// sound level), and every step the speech service takes.
 window.__micDiag = async function(){
   var out = { at: Date.now(), build: DESK_BUILD, ua: navigator.userAgent, online: navigator.onLine };
   try { out.perm = (await navigator.permissions.query({ name: 'microphone' })).state; } catch (e) { out.perm = 'n/a'; }
@@ -3503,7 +3618,6 @@ window.__micDiag = async function(){
   try {
     var st = await navigator.mediaDevices.getUserMedia({ audio: true }), tr = st.getAudioTracks()[0];
     out.track = { label: tr.label, muted: tr.muted, enabled: tr.enabled, state: tr.readyState };
-    try { var se = tr.getSettings(); out.track.deviceId = String(se.deviceId || '').slice(0, 10); out.track.sampleRate = se.sampleRate || null; } catch (e) {}
     try { var ac = new (window.AudioContext || window.webkitAudioContext)(); try { await ac.resume(); } catch (e) {}
       var an = ac.createAnalyser(); ac.createMediaStreamSource(st).connect(an); var buf = new Float32Array(an.fftSize), peak = 0, t0 = Date.now();
       while (Date.now() - t0 < 3000) { an.getFloatTimeDomainData(buf); for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i])); await new Promise(function(r){ setTimeout(r, 100); }); }
@@ -3521,8 +3635,25 @@ window.__micDiag = async function(){
         setTimeout(function(){ try { r.stop(); } catch (e) {} setTimeout(res, 2000); }, 7000); });
       out.speech = ev; }
   } catch (e) { out.speechErr = String(e && e.message || e); }
-  try { await link.set('deskDiag', out); } catch (e) {}
+  try { if (window.link && link.set) await link.set('deskDiag', out); else await firebase.database().ref('sessions/' + DRIVER + '/deskDiag').set(out); } catch (e) {}
 };
+</script>
+<script>
+/* SCREEN REPORT every 30 s + "map" once the map is drawn (10/27) */
+(function(){
+  var sentMap = false;
+  function screen(){ try {
+    var st = document.getElementById('start'), su = document.getElementById('setup');
+    var pins = document.querySelectorAll('.leaflet-marker-icon').length;
+    var camAt = Math.max(Number(window._camHbSeenAt || 0), Number((window._camSync && window._camSync.at) || 0));
+    return { view: (st && getComputedStyle(st).display !== 'none') ? 'start' : (pins ? 'map' : 'blank'), rows: (window.state && state.seqs) ? state.seqs.length : 0, pins: pins,
+      sel: (window.state && state.currentSeq) || null, bucket: (window.state && state.job && state.job.bucket) || null,
+      link: !!(window.link && link.connected), camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
+      outbox: (window._outbox || []).length, ask: window.__askState || null, build: window.DESK_BUILD || '', rc: (window.link && link.reconnects) || 0, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '' };
+  } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
+  function tick(){ var sc = screen(); if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
+  setTimeout(tick, 5000); setInterval(tick, 30000);
+})();
 </script>
 </body>
 </html>

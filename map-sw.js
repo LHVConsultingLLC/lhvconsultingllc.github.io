@@ -16,11 +16,13 @@ self.addEventListener('install', (e) => {
     await Promise.all(LIBS.map((u) => fetch(u, { mode: 'cors' }).then((r) => r.ok && c.put(u, r)).catch(() => {}))); })());
 });
 self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
-const key = (u) => { const x = new URL(u); return x.origin === self.location.origin ? x.pathname : x.href; };
+// desk/*.js carry ?b=<build>: the build is part of the key, so a new build never runs last build's script (audit #6)
+const key = (u) => { const x = new URL(u); return x.origin === self.location.origin ? x.pathname + (/^\/desk\//.test(x.pathname) ? x.search : '') : x.href; };
 self.addEventListener('fetch', (e) => {
   const req = e.request; if (req.method !== 'GET') return;
   const u = new URL(req.url);
   if (/firebaseio|googleapis\.com|cloudfunctions|identitytoolkit|dropbox/.test(u.host)) return;   // live data: never touched
+  if (/build-desk\.txt$/.test(u.pathname)) return;   // the build number is always asked of the site, never a saved copy (audit #6)
   const k = key(req.url);
   const isPage = req.mode === 'navigate';
   const isOurs = u.origin === self.location.origin || LIBS.includes(u.href);
