@@ -92,7 +92,10 @@
       render(q, j.say, j.action, 'Claude · checked your laptop, camera and the live file · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' + (AS ? ' · as ' + AS : ''));
     }).catch(function(e){ clearTimeout(slow); st.lastErr = 'send: ' + String(e && e.message || e).slice(0, 60); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80));
       // a question is never dropped (full audit #5): kept and sent again when the link answers — on 'online' or in 30 s, up to 3 times
-      try { pending = q; var _tries = (askServer._tries = (askServer._tries || 0) + 1); if (_tries <= 3) setTimeout(function(){ if (pending === q) { pending = null; askServer(q); } }, 30000); } catch (e2) {} });
+      // only a NETWORK failure is re-sent (a server error already reached the office — no second answer); one copy in flight
+      try { var _net = /fetch|network|failed to fetch|load failed|abort/i.test(String(e && e.message || e)) || navigator.onLine === false;
+        if (_net && pending !== q) { pending = q; var _tries = (askServer._tries = (askServer._tries || 0) + 1);
+          if (_tries <= 3) setTimeout(function(){ if (pending === q) { pending = null; askServer(q); } }, 30000); } } catch (e2) {} });
   }
   // ── THE OFFICE ANSWER (Dustin 10/26): a HOLD question is picked up by the Field App Claude; its answer lands in
   // sessions/<D>/askReply and shows up (and is spoken) in this same box, so the driver never has to look elsewhere.

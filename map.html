@@ -9,7 +9,7 @@
   var U = 'https://us-central1-lhv-field-log.cloudfunctions.net/deskPing';
   var drv = ''; try { drv = (new URLSearchParams(location.search).get('as') || localStorage.getItem('fieldlog_driver_id') || '').toUpperCase(); } catch (e) {}
   // a look-only page or an office test (?look=1 / ?as=) never reports as a driver (full audit 10/27 night #1)
-  var _quiet = /[?&](look=1|as=)/.test(location.search); try { if (sessionStorage.getItem('lhv_look') === '1') _quiet = true; } catch (e) {}
+  var _quiet = /[?&](look=1|as=)/.test(location.search); try { if (sessionStorage.getItem('lhv_look') === '1' && !/[?&]look=0/.test(location.search)) _quiet = true; } catch (e) {}
   window.__deskPing = function(stage, extra){ try { if (!drv || _quiet) return; var b = { drv: drv, stage: stage, build: (window.DESK_BUILD || ''), path: location.pathname, online: navigator.onLine,
       sw: (navigator.serviceWorker && navigator.serviceWorker.controller) ? navigator.serviceWorker.controller.scriptURL.split('/').pop() : '' };
     for (var k in (extra || {})) b[k] = extra[k];
@@ -844,7 +844,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p46';
+var DESK_BUILD = 'desk-p47';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1144,7 +1144,10 @@ function FirebaseLink(){
           var _gap = Date.now() - _tick; _tick = Date.now();
           if (_gap > 75000) { _rtAt = Date.now(); }   // the laptop was asleep: a fresh check first, not a "dead link" (audit #7)
           if (!self.ready || !_sock) return;
-          if (LOOK && Q.get('livetest') !== '1') { _rtAt = Date.now(); _setConn(); return; }   // look-only: no beat written in a driver's session
+          if (LOOK && Q.get('livetest') !== '1') {   // look-only: a READ proves the link (nothing written in a driver's session) — audit r5
+            sess.child('deskLive').get().then(function(){ _rtAt = Date.now(); _kicks = 0; _setConn(); }, function(){ _rtAt = Date.now(); _setConn(); });
+            if (Date.now() - _rtAt > 90000 && (_kicks < 20 || Date.now() - _lastKick > 5 * 60000)) { _kicks++; _lastKick = Date.now(); try { db.goOffline(); setTimeout(function(){ try { db.goOnline(); } catch (e) {} }, 1500); } catch (e) {} _rtAt = Date.now() - 30000; }
+            return; }
           var t0 = Date.now();
           var _ack = function(){ _rtAt = Date.now(); _kicks = 0; _setConn(); };   // a refusal is an answer from the server too
           sess.child('deskBeat').set({ at: t0, build: DESK_BUILD }).then(_ack, _ack);
@@ -3486,7 +3489,8 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
       _open = false;
       // a tap never leaves unshipped or unsent work behind (full audit #3)
       var _uns = Object.keys(state.logs || {}).some(function(k){ var l = state.logs[k]; return l && seqStatus(l, k) === 'complete' && !l.shipped && !_shippedSeqs[k]; });
-      if (_uns || (_outbox && _outbox.length)) { toast('Ship ' + niceCounty({ county: (state.job && state.job.county) || curB() }) + ' first. Then this switch works.', 4500); return; }
+      if (_uns) { toast('Ship ' + niceCounty({ county: (state.job && state.job.county) || curB() }) + ' first. Then this switch works.', 4500); return; }
+      if (_outbox && _outbox.length) { flushOutbox(); toast('Your changes are still sending. Try the switch again in a few seconds.', 4500); return; }
       switchTo(b, 'tap'); }; });
   }
   async function switchTo(B, why){
