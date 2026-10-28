@@ -94,7 +94,7 @@
       // a question is never dropped (full audit #5): kept and sent again when the link answers — on 'online' or in 30 s, up to 3 times
       // only a NETWORK failure is re-sent (a server error already reached the office — no second answer); one copy in flight
       try { var _net = /fetch|network|failed to fetch|load failed|abort/i.test(String(e && e.message || e)) || navigator.onLine === false;
-        if (_net && pending !== q) { pending = q; var _tries = (askServer._tries = (askServer._tries || 0) + 1);
+        if (_net && pending !== q) { pending = q; var _tm = (askServer._triesBy = askServer._triesBy || {}); var _tries = (_tm[q] = (_tm[q] || 0) + 1);   /* per question (audit r6) */
           if (_tries <= 3) setTimeout(function(){ if (pending === q) { pending = null; askServer(q); } }, 30000); } } catch (e2) {} });
   }
   // ── THE OFFICE ANSWER (Dustin 10/26): a HOLD question is picked up by the Field App Claude; its answer lands in
