@@ -88,7 +88,7 @@
     }).then(function(r){ return r.json(); }).then(function(j){
       clearTimeout(slow);
       if (!j || !j.ok) { render(q, 'Heard, give me a second.', null, 'Claude · the server did not answer (' + ((j && j.error) || 'no answer') + '); it comes back shortly'); return; }
-      st.lastOk = Date.now(); st.lastErr = ''; askServer._tries = 0;
+      st.lastOk = Date.now(); st.lastErr = ''; if (askServer._triesBy) delete askServer._triesBy[q];   // this question's retries start over (audit r7)
       render(q, j.say, j.action, 'Claude · checked your laptop, camera and the live file · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' + (AS ? ' · as ' + AS : ''));
     }).catch(function(e){ clearTimeout(slow); st.lastErr = 'send: ' + String(e && e.message || e).slice(0, 60); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80));
       // a question is never dropped (full audit #5): kept and sent again when the link answers — on 'online' or in 30 s, up to 3 times
