@@ -23,6 +23,7 @@
     '#askc-pop .askc-qa .q{font:600 12px system-ui;color:#8a93ad} #askc-pop .askc-qa .a{margin-top:5px;font:600 14px/1.35 system-ui} #askc-pop .askc-qa .a b{color:#7fb0ff}',
     '#askc-pop .askc-qa .act{margin-top:8px;width:100%;border:0;border-radius:7px;padding:8px;background:#3b6cff;color:#fff;font:800 13px system-ui;cursor:pointer}',
     '#askc-pop .askc-qa .meta{margin-top:6px;font:500 10px system-ui;color:#5d6788}',
+    '#askc-pop .askc-type{display:flex;gap:6px;margin:6px 0} #askc-pop .askc-type input{flex:1;min-width:0;border-radius:8px;border:1px solid #3a4680;background:#0f1428;color:#e6eaf5;padding:8px;font:600 13px system-ui} #askc-pop .askc-type button{border:0;border-radius:8px;padding:0 12px;background:#d97757;color:#fff;font:800 13px system-ui;cursor:pointer}',
     '#askc-pop .askc-try{font:500 11px system-ui;color:#8a93ad;margin-top:6px}',
     '#askc-chips{margin:6px 0} .askc-chip{border-radius:8px;padding:7px 9px;font:600 12.5px/1.3 system-ui;display:flex;align-items:center;gap:8px;margin:5px 0}',
     '.askc-chip.warn{background:#3a2e10;border:1px solid #b88a1a;color:#ffd77a} .askc-chip.ok{background:#0f2e1c;border:1px solid #2f8f55;color:#8ff0b5} .askc-chip.bad{background:#3a1414;border:1px solid #a33;color:#ffb3b3}',
@@ -38,7 +39,8 @@
   fab.innerHTML = '<svg viewBox="0 0 100 100" width="30" height="30" aria-hidden="true"><g fill="#fff"><path d="M50 6 L55 40 L50 50 L45 40Z"/><path d="M50 94 L45 60 L50 50 L55 60Z"/><path d="M6 50 L40 45 L50 50 L40 55Z"/><path d="M94 50 L60 55 L50 50 L60 45Z"/><path d="M19 19 L44 41 L50 50 L41 44Z"/><path d="M81 81 L56 59 L50 50 L59 56Z"/><path d="M81 19 L59 44 L50 50 L56 41Z"/><path d="M19 81 L41 56 L50 50 L44 59Z"/></g></svg>';
   var pop = document.createElement('div'); pop.id = 'askc-pop';
   pop.innerHTML = '<div class="askc-head"><span>Ask Claude</span><button id="askc-x" title="Close">✕</button></div>'
-    + '<div id="askc-listen" class="askc-listen">Tap the Claude button and ask out loud.</div><div id="askc-a"></div>'
+    + '<div id="askc-listen" class="askc-listen">Tap the Claude button and ask out loud.</div>'
+    + '<div class="askc-type"><input id="askc-in" placeholder="…or type your question" autocomplete="off"><button id="askc-send">Ask</button></div><div id="askc-a"></div>'
     + '<div class="askc-try">Ask anything about your day: reload, safe to ship, what is left, a stuck parcel, the camera.</div>';
   wrap.appendChild(fab); wrap.appendChild(pop);
   try { var m = document.getElementById('mph'); if (m) wrap.appendChild(m); } catch (e) {}
@@ -46,6 +48,8 @@
   try { var nb = document.getElementById('nextbar'); nb.parentNode.insertBefore(chips, nb); } catch (e) {}
 
   var $ = function(id){ return document.getElementById(id); };
+  // desk-p43: what the button did last, in the 30-s screen report (Mike 10/27: "isn't working", nothing reached the server)
+  var st = window.__askState = { taps: 0, lastTap: 0, lastErr: '', lastSent: 0, lastOk: 0, typed: 0 };
   var say = function(text){ try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(String(text)); u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} };
   var open = function(){ pop.style.display = 'block'; };
   var close = function(){ pop.style.display = 'none'; try { speechSynthesis.cancel(); } catch (e) {} };
@@ -54,7 +58,7 @@
   function render(q, answer, action, meta){
     var now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     var btn = '';
-    if (action === 'LOAD_DRIVE_FILE') btn = 'Load drive file'; else if (action === 'SHIP') btn = 'SHIP'; else if (/^REOPEN:\d+$/.test(action || '')) btn = 'Reopen ' + action.slice(7);
+    if (action === 'LOAD_DRIVE_FILE') btn = 'Get the newest sheet'; else if (action === 'SHIP') btn = 'SHIP'; else if (/^REOPEN:\d+$/.test(action || '')) btn = 'Reopen ' + action.slice(7);
     var html = String(answer).replace(/[&<>]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }).replace(/(\d[\d,]*)/g, '<b>$1</b>');
     $('askc-a').innerHTML = '<div class="askc-qa"><div class="q">You asked, ' + now + ': “' + String(q).replace(/[<>]/g, '') + '”</div><div class="a">' + html + '</div>'
       + (btn ? '<button class="act" id="askc-act">' + btn + '</button>' : '') + '<div class="meta">' + meta + '</div></div>';
@@ -63,7 +67,7 @@
   }
   function runAction(action){
     try {
-      if (action === 'LOAD_DRIVE_FILE') { close(); showStart(); }
+      if (action === 'LOAD_DRIVE_FILE') { close(); (async function(){ try { var d = await DB.get('kv', 'day'); if (d) { d.sheetReadyAt = 0; await DB.put('kv', 'day', d); } } catch (e) {} if (window.deskAutoSheet) window.deskAutoSheet('ask'); toast('Getting the newest sheet — it loads by itself between parcels.', 4000); })(); }
       else if (action === 'SHIP') { close(); shipSession(); }
       else if (/^REOPEN:\d+$/.test(action || '')) { close(); select(String(action.slice(7))); setTimeout(function(){ actReopen(); }, 300); }
     } catch (e) { try { toast('Could not run that here: ' + (e && e.message || e), 4000); } catch (e2) {} }
@@ -74,17 +78,19 @@
     var now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     $('askc-a').innerHTML = '<div class="askc-qa"><div class="q">You asked, ' + now + ': “' + String(q).replace(/[<>]/g, '') + '”</div><div class="a" style="color:#f0b49c">Heard, give me a second.</div></div>';
     say('Heard, give me a second.');
-    if (navigator.onLine === false) { $('askc-a').querySelector('.a').textContent = 'Heard, give me a second. No signal right now, I\'ll answer as soon as it\'s back.'; say('No signal right now. I will answer as soon as it is back.'); pending = q; return; }
+    if (navigator.onLine === false) { $('askc-a').querySelector('.a').textContent = 'Heard. No internet on the laptop right now — your question goes out the moment the signal is back.'; say('No signal right now. I will answer as soon as it is back.'); pending = q; return; }
     var user = (window.firebase && firebase.auth && firebase.auth().currentUser) || null;
     if (!user) { $('askc-a').querySelector('.a').textContent = 'Heard, give me a second. The laptop is still signing in; ask again in a moment.'; return; }
     var t0 = Date.now(), slow = setTimeout(function(){ var a = $('askc-a').querySelector('.a'); if (a) a.textContent = 'Still checking…'; say('Still checking.'); }, 10000);
+    st.lastSent = Date.now();
     user.getIdToken().then(function(tok){
       return fetch(ASK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: tok, question: q, drv: AS || undefined }) });
     }).then(function(r){ return r.json(); }).then(function(j){
       clearTimeout(slow);
       if (!j || !j.ok) { render(q, 'Heard, give me a second.', null, 'Claude · the server did not answer (' + ((j && j.error) || 'no answer') + '); it comes back shortly'); return; }
+      st.lastOk = Date.now(); st.lastErr = '';
       render(q, j.say, j.action, 'Claude · checked your laptop, camera and the live file · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' + (AS ? ' · as ' + AS : ''));
-    }).catch(function(e){ clearTimeout(slow); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80)); });
+    }).catch(function(e){ clearTimeout(slow); st.lastErr = 'send: ' + String(e && e.message || e).slice(0, 60); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80)); });
   }
   // ── THE OFFICE ANSWER (Dustin 10/26): a HOLD question is picked up by the Field App Claude; its answer lands in
   // sessions/<D>/askReply and shows up (and is spoken) in this same box, so the driver never has to look elsewhere.
@@ -103,16 +109,21 @@
   function listen(){
     open();
     var R = window.SpeechRecognition || window.webkitSpeechRecognition, L = $('askc-listen');
-    if (!R) { L.textContent = 'This browser cannot listen. Type is not available yet.'; return; }
+    st.taps++; st.lastTap = Date.now();
+    var typeIt = function(why){ st.lastErr = why; L.className = 'askc-listen'; fab.classList.remove('on'); try { $('askc-in').focus(); } catch (e) {} };
+    if (navigator.onLine === false) { L.textContent = 'No internet on the laptop right now, so I can\'t hear you. Type your question and it goes out the moment the signal is back.'; typeIt('offline'); return; }
+    if (!R) { L.textContent = 'This laptop can\'t listen. Type your question below.'; typeIt('no-speech-api'); return; }
     var r = new R(); r.lang = 'en-US'; r.interimResults = true; r.maxAlternatives = 1;
     L.className = 'askc-listen on'; L.textContent = 'Listening…'; fab.classList.add('on');
     var done = false;
     r.onresult = function(e){ var t = ''; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; L.textContent = '“' + t + '”'; if (e.results[e.results.length - 1].isFinal && !done) { done = true; askServer(t.trim()); } };
     r.onend = function(){ L.className = 'askc-listen'; fab.classList.remove('on'); if (!done && /Listening/.test(L.textContent)) L.textContent = 'Didn\'t catch that. Tap the button and ask again.'; };
-    r.onerror = function(ev){ L.className = 'askc-listen'; fab.classList.remove('on'); L.textContent = (ev && ev.error === 'not-allowed') ? 'Allow the microphone in Chrome (the icon in the address bar), then tap again.' : 'Didn\'t catch that. Tap the button and ask again.'; };
-    try { r.start(); } catch (e) { L.textContent = 'Tap again.'; }
+    r.onerror = function(ev){ var e = (ev && ev.error) || 'error'; L.textContent = e === 'not-allowed' ? 'The microphone is blocked on this laptop. Type your question below.' : e === 'network' ? 'No internet for listening right now. Type your question below — it goes out when the signal is back.' : 'Didn\'t catch that. Tap and ask again, or type it below.'; typeIt(e); };
+    try { r.start(); } catch (e) { L.textContent = 'Type your question below.'; typeIt('start: ' + String(e && e.message || e).slice(0, 40)); }
   }
-  window.askClaudeAsk = askServer;   // typed question (console / tests / a future keyboard box)
+  window.askClaudeAsk = askServer;
+  var sendTyped = function(){ var v = String($('askc-in').value || '').trim(); if (!v) return; $('askc-in').value = ''; st.typed++; askServer(v); };
+  $('askc-send').onclick = sendTyped; $('askc-in').addEventListener('keydown', function(e){ if (e.key === 'Enter') sendTyped(); });   // typed question (console / tests / a future keyboard box)
   fab.onclick = function(){ if (pop.style.display === 'block' && $('askc-listen').className.indexOf('on') >= 0) return; listen(); };
 
   // ── REAL status chips (the "onboarding" Dustin liked): new sheet ready · safe to ship ──
@@ -131,7 +142,7 @@
     try {
       var out = '';
       var loaded = (window.state && state.seqs) ? state.seqs.length : 0;
-      if (liveRows && loaded && liveRows !== loaded) out += '<div class="askc-chip warn">⟳ New sheet ready: ' + liveRows + ' rows (you have ' + loaded + ')<button id="askc-load">Load</button></div>';
+      if (liveRows && loaded && liveRows !== loaded) out += '<div class="askc-chip ok">⟳ New sheet coming in — it loads by itself between parcels. Nothing to do.</div>';
       var cs = window._camSync || {}, pend = Number(cs.pending || 0), parked = Number(cs.parked || 0);
       var live = cs.at && (Date.now() - Number(cs.at)) < 3 * 60000;
       if (live && pend === 0 && parked === 0) out += '<div class="askc-chip ok">✓ Safe to ship: 0 uploading, every close has photos</div>';

@@ -24,6 +24,9 @@
 try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ var w = r.active || r.waiting || r.installing; if (!(w && /\/map-sw\.js$/.test(w.scriptURL))) r.unregister(); }); }); } catch (e) {}
 </script>
 
+<script>/* ONE DESK, ONE ADDRESS (10/27): the published /field-log/desk.html forwards to the bare-address map. Same site, so
+   the driver key and every saved county come along; ?stay=1 keeps this page (office testing only). */
+try { if (location.hostname === 'lhvconsultingllc.github.io' && /\/field-log\/desk\.html$/.test(location.pathname) && !/[?&]stay=1/.test(location.search)) location.replace('/map.html' + location.search + location.hash); } catch (e) {}</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LHV Field Log · Desk</title>
@@ -249,6 +252,7 @@ html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px
 #redeem-note b{display:block;font:900 15px system-ui;margin-bottom:2px}
 #redeem-note button{position:absolute;right:6px;top:6px;border:0;background:transparent;font:900 18px system-ui;color:#3d2a00;cursor:pointer}
 #sheet-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:949;max-width:calc(100% - 24px);width:340px;background:#dff7ea;color:#0d3b23;border:2px solid #2ecc8a;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:700 13.5px/1.35 system-ui;display:none}
+#upd-note{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:960;max-width:calc(100% - 24px);width:360px;background:#1f6fe5;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:700 14px/1.35 system-ui;display:none}
 .pin>span{display:inline-block;transform:rotate(45deg)}
 .pin.sel{transform:rotate(-45deg) scale(1.45);border:3px solid #fff;box-shadow:0 0 0 4px #111,0 2px 10px #000;z-index:1000}
 /* the parcel the CAMERA is on wears a GREEN ring (Dustin 10/11) */
@@ -694,6 +698,18 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
 #setup{margin:6px 8px;padding:8px 10px;border-radius:10px;background:#2a1d10;border:1px solid #c9822b;font-size:13px;line-height:1.35}
 #setup.ok{background:#10261a;border-color:#2ecc8a;padding:4px 10px}
 #setup .h{font-weight:700;margin-bottom:4px}
+#today-dd{margin:6px 8px;position:relative;font-family:system-ui}
+#today-dd .bar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:9px;background:#1f6fe5;color:#fff;font:800 13px system-ui;cursor:pointer}
+#today-dd .bar small{font:600 11.5px system-ui;color:#dfe9ff;margin-left:6px}
+#today-dd .menu{display:none;position:absolute;left:0;right:0;top:34px;z-index:999;background:#151b36;border:1px solid #2b3466;border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#today-dd.open .menu{display:block}
+#today-dd .h{font:900 10.5px system-ui;color:#9aa3c7;letter-spacing:.06em;margin:4px 6px}
+#today-dd .c{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;font:800 13px system-ui;color:#e6eaf5;cursor:pointer}
+#today-dd .c small{font:600 11px system-ui;color:#9aa3c7} #today-dd .c.on{background:#24306a} #today-dd .c.dim{opacity:.55;cursor:default}
+#today-dd .note{font:600 11px system-ui;color:#9aa3c7;margin:2px 8px 4px}
+#setup.calm{background:#2a2410;border-color:#f0a500;color:#ffe9b0;font-weight:600}
+#setup.calm .it{display:block}
+#off-tag{position:absolute;top:12px;right:60px;z-index:950;background:#2b2f45;color:#e6eaf5;border:1px solid #5a6390;border-radius:999px;padding:6px 12px;font:800 12.5px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;pointer-events:none}
 #setup .it{display:flex;gap:6px;margin:3px 0}
 #setup .it .m{flex:0 0 18px;font-weight:700}
 #setup .it.ok .m{color:#2ecc8a} #setup .it.bad .m{color:#ff6b6b}
@@ -826,7 +842,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p41';
+var DESK_BUILD = 'desk-p43';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1036,7 +1052,10 @@ function _logsInCurrentFile() {
 }
 function _drivenOnAnEarlierDay(seq) {
   var _shared = _jobDriven && _jobDriven[String(seq)];
-  if (_shared) { var td = String((state.job && state.job.date) || '').trim(); if (_shared !== '1' && td && String(_shared).slice(0,10) !== td) return true; }
+  // "date|parcel" (server 10/27): seqs renumber nightly, so an entry for another PARCEL under this seq number never hides this one
+  if (_shared) { var td = String((state.job && state.job.date) || '').trim(), _sp = String(_shared).split('|')[1] || '', _rw = _sp ? _rowFor(seq) : null;
+    var _np = function(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    if (!(_sp && _rw && _np(_rw.parcelId) !== _np(_sp)) && _shared !== '1' && td && String(_shared).slice(0,10) !== td) return true; }
   var l = state.logs[seq]; if (!l) return false;
   try { var _jy = String((state.job && state.job.date) || '').slice(0, 4), _ly = String(l.driveDate || '').slice(0, 4); if (_jy && _ly && _ly < _jy) return false; } catch (e) {}
   var _px = Number(l.photoCount || 0);
@@ -1094,7 +1113,25 @@ function FirebaseLink(){
           databaseURL: "https://lhv-field-log-default-rtdb.firebaseio.com", projectId: "lhv-field-log",
           storageBucket: "lhv-field-log.firebasestorage.app", messagingSenderId: "686638696511", appId: "1:686638696511:web:4fef9ad4969c019e42508a" });
         db = firebase.database(); sess = db.ref('sessions/' + driver);
-        db.ref('.info/connected').on('value', function(s){ self.connected = !!s.val(); onChange(); });
+        // ONLINE MEANS A ROUND TRIP, NOT THE SOCKET'S WORD (10/27, Mike 10:53 AM): after a hotspot drop the socket said
+        // "connected" while nothing was sent or heard for 10 minutes. Every 30 s the desk writes deskBeat and waits for the
+        // server's ack; no ack for 90 s while "connected" = the link is half-dead, so it reconnects itself (goOffline/
+        // goOnline keeps every listener). "Laptop online" follows the round trip. No reload, nothing for the driver.
+        var _sock = false, _rtAt = Date.now(), _kicks = 0;
+        var _setConn = function(){ var c = _sock && (Date.now() - _rtAt < 90000); if (c !== self.connected) { self.connected = c; onChange(); } };
+        db.ref('.info/connected').on('value', function(s){ _sock = !!s.val(); if (_sock) _rtAt = Math.max(_rtAt, Date.now() - 60000); self.connected = _sock; onChange(); });
+        setInterval(function(){
+          if (!self.ready || !_sock) return;
+          var t0 = Date.now();
+          var _ack = function(){ _rtAt = Date.now(); _kicks = 0; _setConn(); };   // a refusal is an answer from the server too
+          sess.child('deskBeat').set({ at: t0, build: DESK_BUILD }).then(_ack, _ack);
+          _setConn();
+          if (Date.now() - _rtAt > 90000 && _kicks < 20) {
+            _kicks++; self.reconnects = (self.reconnects || 0) + 1;
+            try { db.goOffline(); setTimeout(function(){ try { db.goOnline(); } catch (e) {} }, 1500); } catch (e) {}
+            _rtAt = Date.now() - 30000;   // give the new socket a minute before the next kick
+          }
+        }, 30000);
         firebase.auth().onAuthStateChanged(function(user){
           // A NEW KEY LINK WINS (10/20, Pablo's work computer): a computer already signed in as another driver
           // (driver_DS) kept that sign-in when opened with Pablo's key — only an empty sign-in ever used the key.
@@ -1218,11 +1255,11 @@ function wireListeners(){
   });
   link.on('shipped', function(v){ _shippedSeqs = v || {}; rebuildLogs(); cacheSnapshots(); renderAll(); });
   link.on('active', function(v){
-    if (v && v.seq) { var s = String(v.seq), changed = s !== _cameraSeq; _cameraSeq = s; _camOpen = s;
+    if (v && v.seq) { var s = String(v.seq), changed = s !== _cameraSeq; _cameraSeq = s; _camOpen = s; _camStartedDay = _todayKey();
       if (changed && _followCam) select(s, { pan: true, from: 'camera' }); }
     else { _camOpen = null; _cameraSeq = null; }   // STOP closed it or a scratch dropped it (10/18): the top chip falls back to the selected parcel
     if (!_camOpen) { try { if (_autoSheet && _autoSheet.pending) setTimeout(deskAutoSheetApply, 1500); } catch (e) {} }   // desk-p40: a waiting sheet loads at STOP
-    if (!_camOpen) { try { if (window._deskReloadWhenIdle && window.__deskWantReload) window._deskReloadWhenIdle(window.__deskWantReload); } catch (e) {} }
+    if (!_camOpen) { try { if (window._deskReloadWhenIdle && window.__deskWantReload) window._deskReloadWhenIdle(window.__deskWantReload, 'stop'); } catch (e) {} }
     renderAll();
   });
   link.on('hbCam', function(v){ if (v && v !== _camHbLast) { _camHbLast = v; _camHbSeenAt = Date.now(); renderLink(); } });
@@ -1265,8 +1302,10 @@ function publishJob(){
       // cache — never wipe the live one. Back to the start screen; the driver loads the county he is on.
       _jobPublishing = false; _jobPublishedFor = sig;
       var _srv = String(prev).split('/').pop();
-      try { alertBox('Load your drive file', 'Your session is on ' + _srv + ', but this laptop had ' + b + ' saved. Tap Load drive file and pick ' + _srv + ' (or the county you are driving).'); } catch (e) {}
-      try { showStart(); } catch (e) {}
+      // desk-p43: if the session's county is one of the driver's scheduled counties saved on this laptop, open it — no driver step
+      Promise.resolve(window._todayOpen ? window._todayOpen(_srv) : false).catch(function(){ return false; }).then(function(ok){ if (ok) return;
+        try { alertBox('Load your drive file', 'Your session is on ' + _srv + ', but this laptop had ' + b + ' saved. Tap Load drive file and pick ' + _srv + ' (or the county you are driving).'); } catch (e) {}
+        try { showStart(); } catch (e) {} });
       throw new Error('cached job differs from live job');
     }
     if (prev && String(prev) !== jf) {
@@ -1433,10 +1472,24 @@ function restoreSnap(s){ _serverLogs = s.logs || {}; _photoCountsRaw = s.pcRaw |
 function indexRows(){
   _rowIdx = {}; state.seqs.forEach(function(r){ _rowIdx[String(parseInt(r.seq, 10))] = r; });
   // SAME ADDRESS: 2+ seqs at one street + city are called as a BATCH (Dustin 10/11: "This is a batch not a multiple"; camera says ★ BATCH)
-  var grp = {}; _sameAddr = {};
-  state.seqs.forEach(function(r){ var k = String(r.street || '').toUpperCase().replace(/[^A-Z0-9]/g, '') + '|' + String(r.city || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (k.length > 1) (grp[k] = grp[k] || []).push(String(r.seq)); });
-  Object.keys(grp).forEach(function(k){ if (grp[k].length > 1) { var l = grp[k].slice().sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); }); l.forEach(function(sq){ _sameAddr[String(parseInt(sq, 10))] = l; }); } });
+  // 10/27 (Richie): same address text is NOT enough. "AERIAL Confidential" rows (no street address, located from the
+  // aerial) were one 17-seq batch across 36 km of Richland. A batch = same address text AND each parcel's own lat/long
+  // within BATCH_M of another in the group. Placeholder addresses (AERIAL…) never batch — every one is its own pin.
+  var BATCH_M = 150, grp = {}; _sameAddr = {};
+  var _placeholder = function(st){ return /^(AERIAL|CONFIDENTIAL|NOADDRESS|NONE|UNKNOWN|VACANT|0)/.test(st); };
+  state.seqs.forEach(function(r){ var st = String(r.street || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var k = st + '|' + String(r.city || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (st.length > 1 && !_placeholder(st)) (grp[k] = grp[k] || []).push(r); });   // AERIAL rows never batch: each keeps its own pin at its own lat/long
+  var _m = function(a, b){ var R = 6371000, d = Math.PI / 180, x = (b[0] - a[0]) * d, y = (b[1] - a[1]) * d;
+    var h = Math.sin(x / 2) * Math.sin(x / 2) + Math.cos(a[0] * d) * Math.cos(b[0] * d) * Math.sin(y / 2) * Math.sin(y / 2); return 2 * R * Math.asin(Math.sqrt(h)); };
+  Object.keys(grp).forEach(function(k){ var rows = grp[k]; if (rows.length < 2) return;
+    var left = rows.slice(), clusters = [];   // single-link: a parcel joins a cluster if it is within BATCH_M of any member
+    while (left.length) { var c = [left.shift()], grew = true;
+      while (grew) { grew = false; for (var i = left.length - 1; i >= 0; i--) { var p = ll(left[i]);
+        if (c.some(function(q){ var pq = ll(q); return (!p || !pq) ? !(p || pq) : _m(p, pq) <= BATCH_M; })) { c.push(left.splice(i, 1)[0]); grew = true; } } }
+      clusters.push(c); }
+    clusters.forEach(function(c){ if (c.length < 2) return; var l = c.map(function(r){ return String(r.seq); }).sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); });
+      l.forEach(function(sq){ _sameAddr[String(parseInt(sq, 10))] = l; }); }); });
   if (state.job) loadBounds(state.job.bucket);
 }
 var _sameAddr = {};
@@ -1546,7 +1599,7 @@ function renderDashboard(){
     $('tb-job').innerHTML = esc(state.job.county) + '<small>' + esc(m ? (+m[1]) + '/' + (+m[2]) : dt) + '</small>';
     $('tb-job').title = state.job.county + ' County · drive file ' + dt + ' · ' + state.seqs.length + ' on the sheet'; })();
   $('jobsub').textContent = state.job.bucket + ' · ' + state.job.date + ' · ' + state.seqs.length + ' on the sheet';
-  var st = $('stale'); if (state.job.date !== _lhvDate()) { st.style.display = 'block'; st.textContent = 'This list was loaded ' + state.job.date + '. Load today\'s drive file when you have signal.'; } else st.style.display = 'none';
+  var st = $('stale'); if (state.job.date !== _lhvDate()) { st.style.display = 'block'; st.textContent = 'This list is from ' + state.job.date + '. Today\'s list loads by itself when there is signal. Nothing to do.'; } else st.style.display = 'none';
   document.querySelectorAll('.stat').forEach(function(e){ var f = e.getAttribute('data-f'); e.classList.toggle('on', _filter !== 'all' && (f === _filter || (_filter === 'green' && (f === 'uploading' || f === 'rating')))); });
 }
 function aiMini(l, st){
@@ -1703,18 +1756,42 @@ var SETUP_ITEMS = [
   ['gps', 'GPS puck connected', 'Plug the puck in, click ◎ Connect GPS, pick the puck, click again for Centered.'],
   ['camera', 'Camera on', 'Open the camera link in Safari on the phone and keep it on screen.'],
 ];
+var _camStartedDay = '';
+function _todayKey(){ return new Date().toLocaleDateString('en-CA'); }
+function _dayStarted(){
+  if (_camStartedDay === _todayKey()) return true;
+  try { var t = _todayKey(); for (var k in (_serverLogs || {})) { var l = _serverLogs[k]; if (l && l.closedAt && new Date(Number(l.closedAt)).toLocaleDateString('en-CA') === t) return true; } } catch (e) {}
+  return false;
+}
 function renderSetup(){
-  var el = document.getElementById('setup'); if (!el || MOCK) return;
+  var el = document.getElementById('setup'); if (!el || (MOCK && !/[?&]setuptest=1/.test(location.search))) return;
   if (!state.job) { el.style.display = 'none'; return; }
   var st = setupState(), items = SETUP_ITEMS.filter(function(it){ return st[it[0]] !== null; });
   var good = items.filter(function(it){ return st[it[0]]; }).length;
   el.style.display = '';
   if (good === items.length) { el.className = 'ok'; el.innerHTML = '<span style="color:#2ecc8a;font-weight:700">✓ Ready to drive</span>' + (st.battery != null ? ' <span style="color:#8a90a6">· battery ' + st.battery + '%</span>' : ''); return; }
+  // desk-p43 (Dustin 10/27, approved): once the day has started, the card never tells a driver to stop. It shows only
+  // what is off, one calm line each, and that the laptop fixes itself. The full checklist is for the morning only.
+  if (_dayStarted()) {
+    var CALM = { online: 'Laptop has no internet right now — keep working, it reconnects by itself. Your photos are uploading from the phone.',
+      charger: 'Laptop is not charging — plug it in when you get a chance.',
+      gps: 'GPS puck is not connected — the map still works. Reconnect it when you are parked.',
+      camera: 'The camera phone has been quiet for a few minutes — it catches up by itself.' };
+    el.className = 'calm';
+    el.innerHTML = items.filter(function(it){ return !st[it[0]]; }).map(function(it){ return '<div class="it">' + CALM[it[0]] + '</div>'; }).join('');
+    return;
+  }
   el.className = '';
   el.innerHTML = '<div class="h">Setup: ' + good + ' of ' + items.length + ' ready. Do not start the list until all are ✓</div>' +
     items.map(function(it){ var ok = st[it[0]]; return '<div class="it ' + (ok ? 'ok' : 'bad') + '"><span class="m">' + (ok ? '✓' : '✗') + '</span><span>' + it[1] + (ok ? '' : '<div class="fx">' + it[2] + '</div>') + '</span></div>'; }).join('');
 }
 setInterval(renderSetup, 5000);
+var _offSince = 0;
+function renderOffTag(){ try {   // desk-p43 (approved): a calm tag on the map, only after 20 s without the server
+  var on = !!(link && link.connected); _offSince = on ? 0 : (_offSince || Date.now());
+  var el = $('off-tag'); if (!el) { el = document.createElement('div'); el.id = 'off-tag'; el.textContent = 'Offline · everything is saved on this laptop'; var mw = $('mapwrap'); if (!mw) return; mw.appendChild(el); }
+  el.style.display = (!on && Date.now() - _offSince > 20000) ? 'block' : 'none'; } catch (e) {} }
+setInterval(renderOffTag, 5000);
 function renderLink(){
   var lp = $('link-pill'), n = _outbox.length;
   if (!link) { lp.className = 'pill warn'; lp.textContent = 'Starting…'; }
@@ -1808,6 +1885,7 @@ async function shipSession(){
     var back = await withTimeout(link.once('shipped/' + toShip[0].seq), 10000);   // a ship that did not land is not a ship
     if (!back) throw new Error('write did not land');
     await alertBox('Shipped', '✓ Shipped ' + toShip.length + ' parcel(s). Locked.');
+    try { if (window._todayAfterShip) window._todayAfterShip(); } catch (e) {}
   } catch (e) {
     await alertBox('SHIP FAILED', '⚠ SHIP FAILED — nothing was recorded.\n\nThese ' + toShip.length + ' parcel(s) are still UNSHIPPED. Your photos and ratings are safe; only the ship stamp did not land.\n\nCheck the hotspot and press SHIP again.\n\n(' + (e && e.message || e) + ')');
   }
@@ -3057,10 +3135,11 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
 // ── THE LAPTOP UPDATES ITSELF, ONLY WHEN IDLE (Dustin 10/20, fix list B4: "10 refreshes" on 10/19; a tab
 // left open overnight ran yesterday's code). Every 10 minutes, with signal, it reads build-desk.txt; a newer
 // build reloads the page ONLY when nothing is going on: no route running, no parcel open on the camera, and
-// the car not moving (GPS under 3 mph, or no GPS). It says so 15 s ahead; any click makes it wait 10 minutes.
+// the car not moving (GPS under 3 mph, or no GPS). desk-p43: it lands ~2 s after a camera STOP or after 20 s idle,
+// with a 'Nothing to do' note — no countdown, no tap that cancels it.
 // Unsent taps live in the IndexedDB outbox and the day reopens from this laptop, so a reload loses nothing.
 (function(){
-  if (MOCK) return;
+  if (MOCK && !/[?&]updtest=1/.test(location.search)) return;   // the harness turns it on in the mock (S6)
   var _waitUntil = 0, _pending = false;
   function idle(){ try {
     if (_camOpen) return false;
@@ -3071,15 +3150,24 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
   // is NOT dropped until the next 10-minute check — it waits, and reloads at the FIRST idle moment (checked every
   // 20 s, and the instant the camera STOPs). Also checked when signal returns and when the laptop wakes.
   var _want = null;
-  function reloadWhenIdle(label){
+  // desk-p43 (10/27, Richie's p42 waited 40 min): the old 15-s countdown was cancelled by ANY tap or by the next
+  // START, and a driver mid-day never sits still with the camera closed for 15 s — the update never landed. Now a
+  // waiting update lands ~2 s after the camera STOPs (the driver is parked, the parcel is closed), or after 20 s of
+  // the laptop sitting idle. No countdown, nothing to cancel, nothing to do: the map says it is updating and comes
+  // back with the same day (the day + outbox reopen from this laptop). At most 3 tries per 30 min, so a weak signal
+  // that keeps opening the saved copy can never loop.
+  var _idleSince = 0;
+  function _tries(){ try { var t = JSON.parse(sessionStorage.getItem('desk_upd_tries') || '[]'); return t.filter(function(x){ return Date.now() - x < 30 * 60e3; }); } catch (e) { return []; } }
+  function reloadWhenIdle(label, why){
     if (_pending) return;
-    if (!idle() || Date.now() < _waitUntil) { _want = label; window.__deskWantReload = label; return; }
+    _want = label; window.__deskWantReload = label;
+    if (!idle()) { _idleSince = 0; return; }
+    if (why !== 'stop') { if (!_idleSince) { _idleSince = Date.now(); return; } if (Date.now() - _idleSince < 20000) return; }
+    var t = _tries(); if (t.length >= 3) return;
+    t.push(Date.now()); try { sessionStorage.setItem('desk_upd_tries', JSON.stringify(t)); } catch (e) {}
     _pending = true; _want = null;
-    var held = false, hold = function(){ held = true; _waitUntil = Date.now() + 10 * 60e3; toast('Update waits 10 minutes', 2500); };
-    document.addEventListener('pointerdown', hold, { once: true, capture: true });
-    toast('⬆ Laptop update ' + label + ': reloading in 15 s (click anywhere to wait)', 15000);
-    setTimeout(function(){ document.removeEventListener('pointerdown', hold, { capture: true }); _pending = false;
-      if (!held && idle()) location.reload(); else _want = label; }, 15000);
+    try { if (window._noteShow) _noteShow('upd-note', 'Updating your map from the office — back in 15 seconds. Nothing to do.', 0); } catch (e) {}
+    setTimeout(function(){ if (idle()) { location.reload(); return; } _pending = false; _want = label; try { var n = $('upd-note'); if (n) n.style.display = 'none'; } catch (e) {} }, 2000);
   }
   function chk(){
     if (_pending || !navigator.onLine) return;
@@ -3273,6 +3361,116 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
 <script>document.write('<script src="desk/imagery.js?b=' + DESK_BUILD + '"><\/script>');</script>
 <!-- STREETS ON IMAGERY: road lines + street names drawn from the county road file (desk/roadlabels.js) -->
 <script>document.write('<script src="desk/roadlabels.js?b=' + DESK_BUILD + '"><\/script>');</script>
+<script>
+// ── TODAY: THE DRIVER'S COUNTIES COME FROM THE SCHEDULE (desk-p43, Dustin 10/27 approved) ───────────────────────────
+// "we know who is driving what and when" — no folder picking, no "Load drive file". The server (driverDay) says which
+// counties the schedule gives this driver today and tomorrow. Every one of them is saved on this laptop while there is
+// signal (sheet + outlines + roads + speed limits, from driveSheet), so it opens with no signal at all.
+// • TODAY dropdown (Dustin: "could today just be a dropdown"): one line — county · left · saved ✓ ▾; tap opens today's
+//   counties (one tap switches early, never required) and tomorrow's, greyed ("Look only. It opens by itself in the morning.")
+// • The next county's pins show small and grey on the map, look-only, until the switch.
+// • After a county's SHIP has landed, the laptop switches to the next county by itself between parcels (camera stopped),
+//   with a green note. Never on "0 left" alone: a county change resets the session, so the ship must land first.
+(function(){
+  var DAY_URL = 'https://us-central1-lhv-field-log.cloudfunctions.net/driverDay';
+  var SHEET = 'https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet';
+  var _sched = null, _busy = false, _open = false, _nextLayer = null, _nextFor = '';
+  function ready(){ return !LOOK && window.firebase && firebase.auth && firebase.auth().currentUser; }
+  async function post(url, body){
+    var user = firebase.auth().currentUser; if (!user) return null;
+    var as = (Q.get('as') || '').toUpperCase(); body.idToken = await user.getIdToken(); if (as) body.drv = as;
+    return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+  }
+  function b64buf(b64){ var bin = atob(b64), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; }
+  function niceCounty(c){ return String(c.county || c.bucket).replace(/^[A-Z]{2}\s*-\s*/, ''); }
+  async function saved(B){ try { var s = await DB.get('kv', 'schedSheet:' + B), bd = await DB.get('kv', 'bounds:' + B); return { sheet: !!(s && s.b64), bounds: !!bd, rows: s ? s.rows : null, readyAt: s ? s.readyAt : 0 }; } catch (e) { return { sheet: false }; } }
+
+  async function refresh(){
+    if (!ready() || navigator.onLine === false) return;
+    try { var r = await post(DAY_URL, {}); if (r && r.ok) { _sched = r; await DB.put('kv', 'sched', r); render(); preload(); } } catch (e) {}
+  }
+  async function preload(){   // every scheduled county saved on this laptop while there is signal
+    if (_busy || !_sched) return; _busy = true;
+    try {
+      var all = (_sched.today || []).concat(_sched.tomorrow || []);
+      for (var i = 0; i < all.length; i++) { var c = all[i], B = c.bucket;
+        var have = await DB.get('kv', 'schedSheet:' + B);
+        if (!have || Number(have.readyAt || 0) < Number(c.readyAt || 0)) {
+          var r = await post(SHEET, { bucket: B, haveReadyAt: 0 });
+          if (r && r.ok && r.ready && r.b64) { var seqs = parseDriveFile(b64buf(r.b64).buffer);
+            await DB.put('kv', 'schedSheet:' + B, { b64: r.b64, readyAt: Number(r.readyAt), rows: seqs.length, at: Date.now() }); } }
+        if (!(await DB.get('kv', 'bounds:' + B))) { var k1 = await post(SHEET, { bucket: B, kind: 'boundaries' });
+          if (k1 && k1.b64) await DB.put('kv', 'bounds:' + B, JSON.parse(new TextDecoder().decode(b64buf(k1.b64)))); }
+        if (!(await DB.get('kv', 'roads:' + B))) { var k2 = await post(SHEET, { bucket: B, kind: 'roads' });
+          if (k2 && k2.b64) await DB.put('kv', 'roads:' + B, new Blob([b64buf(k2.b64)], { type: 'application/json' })); }
+        if (!(await DB.get('kv', 'speedlimits:' + B))) { var k3 = await post(SHEET, { bucket: B, kind: 'speedlimits' });
+          if (k3 && k3.b64) await DB.put('kv', 'speedlimits:' + B, { text: new TextDecoder().decode(b64buf(k3.b64)), size: 0, mod: 0, at: Date.now() }); }
+        render();
+      }
+    } catch (e) { console.warn('today preload', e); }
+    _busy = false; render(); drawNext();
+  }
+  function curB(){ return state.job && state.job.bucket ? String(state.job.bucket) : ''; }
+  function leftNow(){ var n = parseInt(($('st-pending') || {}).textContent, 10); return isFinite(n) ? n : null; }
+  async function render(){
+    var host = $('today-dd'); if (!host) { host = document.createElement('div'); host.id = 'today-dd'; var su = $('setup'); if (!su) return; su.parentNode.insertBefore(host, su); }
+    if (!_sched || !(_sched.today || []).length) { host.style.display = 'none'; return; }
+    host.style.display = '';
+    var B = curB(), cur = (_sched.today || []).filter(function(c){ return c.bucket === B; })[0] || (_sched.today || [])[0];
+    var row = async function(c, kind){ var sv = await saved(c.bucket), on = c.bucket === B;
+      var left = on ? leftNow() : (sv.rows != null ? sv.rows : c.left);
+      var tag = (left != null ? left.toLocaleString() + ' left' : '') + (sv.sheet && sv.bounds ? ' · saved ✓' : ' · saving…');
+      return '<div class="c' + (on ? ' on' : '') + (kind === 'tm' ? ' dim' : '') + '" data-b="' + c.bucket + '" data-k="' + kind + '">' + esc(niceCounty(c)) + ' <small>' + tag + '</small></div>'; };
+    var bar = await row(cur, 'bar');
+    var items = []; for (var i = 0; i < _sched.today.length; i++) items.push(await row(_sched.today[i], 'td'));
+    var tm = []; for (var j = 0; j < (_sched.tomorrow || []).length; j++) tm.push(await row(_sched.tomorrow[j], 'tm'));
+    host.innerHTML = '<div class="bar">' + bar.replace(/^<div[^>]*>/, '<span>').replace(/<\/div>$/, '</span>') + '<span>▾</span></div>' +
+      '<div class="menu"><div class="h">TODAY</div>' + items.join('') + (tm.length ? '<div class="h">TOMORROW</div>' + tm.join('') + '<div class="note">Look only. It opens by itself in the morning.</div>' : '') + '</div>';
+    host.classList.toggle('open', _open);
+    host.querySelector('.bar').onclick = function(){ _open = !_open; host.classList.toggle('open', _open); };
+    host.querySelectorAll('.menu .c').forEach(function(el){ el.onclick = function(){
+      var b = el.getAttribute('data-b'); if (el.getAttribute('data-k') !== 'td' || b === curB()) { _open = false; host.classList.remove('open'); return; }
+      _open = false; switchTo(b, 'tap'); }; });
+  }
+  async function switchTo(B, why){
+    if (_camOpen) { toast('Finish the parcel on the camera first (STOP), then it switches.', 3500); return false; }
+    var s = await DB.get('kv', 'schedSheet:' + B); if (!s || !s.b64) { toast('That county is still saving to this laptop.', 3000); return false; }
+    var seqs = parseDriveFile(b64buf(s.b64).buffer); if (!seqs || !seqs.length) return false;
+    var from = state.job ? niceCounty({ county: state.job.county }) : '';
+    await startDay(jobFromBucket(B), seqs, { quiet: true });
+    try { var d = await DB.get('kv', 'day'); if (d && d.job && d.job.bucket === B) { d.sheetReadyAt = Number(s.readyAt || 0); await DB.put('kv', 'day', d); } } catch (e) {}
+    var c = ((_sched && _sched.today) || []).filter(function(x){ return x.bucket === B; })[0] || { bucket: B };
+    _noteShow('sheet-note', (why === 'auto' && from ? esc(from) + ' done — now ' : 'Now ') + esc(niceCounty(c)) + '. ' + seqs.length.toLocaleString() + ' parcels, already on this laptop. Nothing to do.', 12000);
+    render(); drawNext(); return true;
+  }
+  function drawNext(){   // the next county's pins: small, grey, look-only
+    try { if (!map || !_sched) return; var B = curB(), t = _sched.today || [], i = t.map(function(c){ return c.bucket; }).indexOf(B);
+      var nx = i >= 0 ? t[i + 1] : null; var key = (nx ? nx.bucket : '') + '|' + B;
+      if (key === _nextFor) return; _nextFor = key;
+      if (_nextLayer) { map.removeLayer(_nextLayer); _nextLayer = null; }
+      if (!nx) return;
+      DB.get('kv', 'schedSheet:' + nx.bucket).then(function(s){ if (!s || !s.b64 || curB() !== B) return;
+        var seqs = parseDriveFile(b64buf(s.b64).buffer); _nextLayer = L.layerGroup();
+        seqs.forEach(function(r){ var p = ll(r); if (p) _nextLayer.addLayer(L.circleMarker(p, { radius: 3, color: '#8a90a6', weight: 1, fillColor: '#8a90a6', fillOpacity: .55, interactive: false })); });
+        _nextLayer.addTo(map); });
+    } catch (e) {}
+  }
+  // after a SHIP lands for the current county: switch to the next one on today's schedule, between parcels
+  window._todayAfterShip = function(){
+    try { if (!_sched) return; var t = _sched.today || [], i = t.map(function(c){ return c.bucket; }).indexOf(curB()); var nx = i >= 0 ? t[i + 1] : null;
+      if (!nx || leftNow() !== 0) return;
+      var go = function(){ if (_camOpen) return setTimeout(go, 5000); switchTo(nx.bucket, 'auto'); }; setTimeout(go, 3000);
+    } catch (e) {}
+  };
+  window._todayRender = function(){ render(); drawNext(); };
+  window._todayOpen = function(B){ B = String(B || '').toUpperCase(); return DB.get('kv', 'schedSheet:' + B).then(function(x){ return (x && x.b64) ? switchTo(B, 'session') : false; }); };
+  window._todaySet = function(sch){ _sched = sch; render(); drawNext(); };   // the harness / mock preview only
+  setInterval(function(){ if (_sched && !_open) render(); drawNext(); }, 10000);   // keep "left" current
+  DB.get('kv', 'sched').then(function(r){ if (r) { _sched = r; render(); drawNext(); } }).catch(function(){});
+  var wire = setInterval(function(){ if (ready()) { clearInterval(wire); refresh(); } }, 2000);
+  setInterval(refresh, 15 * 60e3); window.addEventListener('online', function(){ setTimeout(refresh, 3000); });
+})();
+</script>
 <script src="desk/ask.js"></script>
 <!-- (DIRECT LINE laptop ⇄ camera, desk/p2p.js: REMOVED 10/18 — the car router is retired.) -->
 <script>
@@ -3286,7 +3484,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     return { view: (st && getComputedStyle(st).display !== 'none') ? 'start' : (pins ? 'map' : 'blank'), rows: (window.state && state.seqs) ? state.seqs.length : 0, pins: pins,
       sel: (window.state && state.currentSeq) || null, bucket: (window.state && state.job && state.job.bucket) || null,
       link: !!(window.link && link.connected), camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
-      outbox: (window._outbox || []).length, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '' };
+      outbox: (window._outbox || []).length, ask: window.__askState || null, build: window.DESK_BUILD || '', rc: (window.link && link.reconnects) || 0, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '' };
   } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
   function tick(){ var sc = screen(); if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
   setTimeout(tick, 5000); setInterval(tick, 30000);

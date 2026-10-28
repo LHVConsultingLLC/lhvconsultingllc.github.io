@@ -28,7 +28,8 @@ self.addEventListener('fetch', (e) => {
   if (isPage) {
     e.respondWith((async () => {
       const c = await caches.open(C);
-      const live = fetch(req.url, { cache: 'no-cache' }).then((r) => { if (r && r.ok) c.put(k, r.clone()); return r; });
+      const live = fetch(req.url, { cache: 'no-cache' }).then(async (r) => { if (r && r.ok) await c.put(k, r.clone()); return r; });
+      e.waitUntil(live.then(() => {}, () => {}));   // 10/27: keep the helper alive until the new page is saved, so a slow link still gets the new build on the next load
       try { return await Promise.race([live, new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 4000))]); }
       catch (err) { const hit = await c.match(k); if (hit) return hit; return live; }
     })());

@@ -55,6 +55,7 @@
     self.update = function(path, obj){ if (!online) return new Promise(function(){}); return new Promise(function(res){ setTimeout(function(){ update(path, obj); res(); }, 120); }); };
     self.set = function(path, v){ if (!online) return new Promise(function(){}); return new Promise(function(res){ setTimeout(function(){ set(path, v); res(); }, 120); }); };
     self.once = function(path){ if (!online) return new Promise(function(){}); return Promise.resolve(getAt(abs(path))); };
+    self.off = function(path){ var a = abs(path); for (var i = listeners.length - 1; i >= 0; i--) if (listeners[i].path === a) listeners.splice(i, 1); };   // like the live link (county switch without a reload)
     return self;
   };
 
