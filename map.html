@@ -10,11 +10,29 @@
   var drv = ''; try { drv = (new URLSearchParams(location.search).get('as') || localStorage.getItem('fieldlog_driver_id') || '').toUpperCase(); } catch (e) {}
   // a look-only page or an office test (?look=1 / ?as=) never reports as a driver (full audit 10/27 night #1)
   var _quiet = /[?&](look=1|as=)/.test(location.search); try { if (sessionStorage.getItem('lhv_look') === '1' && !/[?&]look=0/.test(location.search)) _quiet = true; } catch (e) {}
-  window.__deskPing = function(stage, extra){ try { if (!drv || _quiet) return; var b = { drv: drv, stage: stage, build: (window.DESK_BUILD || ''), path: location.pathname, online: navigator.onLine,
+  // office live tests only (desk-p51): ?pingas=DS reports as the OFFICE session (sessions/DS), never as a driver
+  if (/[?&]pingas=DS(&|$)/.test(location.search) && /[?&]livetest=1/.test(location.search) && !/[?&]look=1/.test(location.search)) { drv = 'DS'; _quiet = false; }
+  window.__deskPing = function(stage, extra){ try { if (!drv) { try { drv = String(localStorage.getItem('fieldlog_driver_id') || '').toUpperCase(); } catch (e) {} }
+    if (!drv || _quiet) return; var b = { drv: drv, stage: stage, build: (window.DESK_BUILD || ''), path: location.pathname, online: navigator.onLine,
       sw: (navigator.serviceWorker && navigator.serviceWorker.controller) ? navigator.serviceWorker.controller.scriptURL.split('/').pop() : '' };
     for (var k in (extra || {})) b[k] = extra[k];
-    var body = JSON.stringify(b); if (!(navigator.sendBeacon && navigator.sendBeacon(U, new Blob([body], { type: 'text/plain' })))) fetch(U, { method: 'POST', body: body, keepalive: true, mode: 'no-cors' }).catch(function(){}); } catch (e) {} };
-  window.__deskPing('start');
+    try { if (window.__deskPingExtra) { var x = window.__deskPingExtra(stage) || {}; for (var k2 in x) b[k2] = x[k2]; } } catch (e) {}
+    var body = JSON.stringify(b);
+    var beacon = function(){ try { if (!(navigator.sendBeacon && navigator.sendBeacon(U, new Blob([body], { type: 'text/plain' })))) fetch(U, { method: 'POST', body: body, keepalive: true, mode: 'no-cors' }).catch(function(){}); } catch (e) {} };
+    /* desk-p51: a fetch, so the answer can carry what the listeners should have delivered (office command, Ask Claude
+       answer, the camera's check-in, closes not heard). The beacon is only the fallback when the fetch fails. */
+    if (!window.fetch) { beacon(); return; }
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, 20000);
+    fetch(U, { method: 'POST', body: body, keepalive: body.length < 60000, signal: ac ? ac.signal : undefined })
+      .then(function(r){ clearTimeout(tm); return r.status === 200 ? r.json() : null; })
+      .then(function(j){ if (j && j.ok && window.__deskPingReply) window.__deskPingReply(j); }, function(){ clearTimeout(tm); beacon(); }); } catch (e) {} };
+  /* WHY THE MAP STARTED (desk-p51, MT 10/28 4:15 PM): the browser's own reason (reload / navigate / back_forward), whether
+     Chrome had thrown the tab away (wasDiscarded), the reason the desk gave for a reload of its own, and the last note
+     that was on screen before the page went away. */
+  (function(){ var x = {}; try { var ne = performance.getEntriesByType('navigation')[0]; x.nav = ne ? ne.type : ''; } catch (e) {}
+    try { x.disc = !!document.wasDiscarded; } catch (e) {}
+    try { x.note = sessionStorage.getItem('lhv_lastnote') || ''; x.why = sessionStorage.getItem('lhv_reload_why') || ''; sessionStorage.removeItem('lhv_reload_why'); } catch (e) {}
+    window.__deskStart = x; window.__deskPing('start', x); })();
   window.addEventListener('error', function(e){ window.__deskPing('error', { err: (e.message || 'error') + ' @' + (e.lineno || '?') }); });
   window.addEventListener('unhandledrejection', function(e){ window.__deskPing('error', { err: 'promise: ' + String((e.reason && (e.reason.message || e.reason)) || '?').slice(0, 150) }); });
 })();
@@ -711,6 +729,7 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
 #today-dd .note{font:600 11px system-ui;color:#9aa3c7;margin:2px 8px 4px}
 #setup.calm{background:#2a2410;border-color:#f0a500;color:#ffe9b0;font-weight:600}
 #setup.calm .it{display:block}
+#shipq-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:948;max-width:calc(100% - 24px);width:360px;background:#e3ecff;color:#10224d;border:2px solid #5b8cff;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:700 13.5px/1.35 system-ui;display:none}
 #off-tag{position:absolute;top:12px;right:60px;z-index:950;background:#2b2f45;color:#e6eaf5;border:1px solid #5a6390;border-radius:999px;padding:6px 12px;font:800 12.5px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;pointer-events:none}
 #setup .it{display:flex;gap:6px;margin:3px 0}
 #setup .it .m{flex:0 0 18px;font-weight:700}
@@ -844,7 +863,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p49';
+var DESK_BUILD = 'desk-p51';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -859,13 +878,18 @@ function _lhvDate(when){   // EASTERN, never UTC — same rule as index.html
   try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(when || new Date()); }
   catch (e) { return new Date((when||new Date()).getTime() - 4*3600*1000).toISOString().slice(0,10); }
 }
+// WHY DID THE MAP RESTART (desk-p51, MT 10/28 4:15:28 PM: a restart with no office command and no new build). The last
+// note shown on screen and the reason for any reload the desk makes itself are kept in this tab (sessionStorage); the
+// next page start sends them to the office with the browser's own reason (reload / navigate / tab discarded).
+function _noteKeep(s){ try { sessionStorage.setItem('lhv_lastnote', new Date().toLocaleTimeString() + ' ' + String(s || '').replace(/\s+/g, ' ').trim().slice(0, 140)); } catch (e) {} }
+function _reloadWhy(s){ try { sessionStorage.setItem('lhv_reload_why', new Date().toLocaleTimeString() + ' ' + String(s || '').slice(0, 100)); } catch (e) {} }
 var _toastT = null;
-function toast(msg, ms){ var t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(_toastT); _toastT = setTimeout(function(){ t.style.display = 'none'; }, ms || 2600); }
+function toast(msg, ms){ _noteKeep(msg); var t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(_toastT); _toastT = setTimeout(function(){ t.style.display = 'none'; }, ms || 2600); }
 // In-app confirm/alert (keyboard: Enter = primary, Esc = cancel)
 var _modalResolve = null;
 function modal(title, body, buttons){
   return new Promise(function(res){
-    _modalResolve = res;
+    _modalResolve = res; _noteKeep(title + ': ' + body);
     $('m-title').textContent = title; $('m-body').textContent = body;
     var mb = $('m-btns'); mb.innerHTML = '';
     buttons.forEach(function(b){ var el = document.createElement('button'); el.className = 'btn ' + (b.cls || 'g'); el.textContent = b.label;
@@ -924,6 +948,9 @@ var _jobDriven = {};
 var _cameraSeq = null;         // sessions/<DRV>/active.seq — what the camera is on right now
 var _camOpen = null;           // the parcel OPEN on the camera right now (null once it closes / scratches) — SHIP waits for STOP (10/18)
 var _camHbLast = null, _camHbSeenAt = 0;
+var _hbHeardAt = 0;            // when the hbCam LISTENER last delivered (the server's copy can also arrive by the 30-s ping)
+var _rawClosed = {};           // every closed log key the logs listener delivered (another job's too), for the ping's "known" list
+var _lsnW = { srvAt: 0, srvHb: 0, srvHbAge: null, lastFix: 0, n: 0, knownAt: 0, closesIn: 0, missed: 0, cmdIn: 0, askIn: 0 };
 var _filter = 'all';
 var DRIVER = null;
 
@@ -1138,7 +1165,9 @@ function FirebaseLink(){
         // goOnline keeps every listener). "Laptop online" follows the round trip. No reload, nothing for the driver.
         var _sock = false, _rtAt = Date.now(), _kicks = 0;
         var _setConn = function(){ var c = _sock && (Date.now() - _rtAt < 90000); if (c !== self.connected) { self.connected = c; onChange(); } };
-        db.ref('.info/connected').on('value', function(s){ _sock = !!s.val(); if (_sock) _rtAt = Math.max(_rtAt, Date.now() - 60000); self.connected = _sock; onChange(); });
+        db.ref('.info/connected').on('value', function(s){ _sock = !!s.val(); if (_sock) _rtAt = Math.max(_rtAt, Date.now() - 60000); self.connected = _sock; onChange();
+          if (_sock && self._subs.some(function(x){ return x.dead; })) scheduleReattach('socket back'); });
+        firebase.auth().onIdTokenChanged(function(u){ if (u && self._subs.some(function(x){ return x.dead; })) scheduleReattach('signed in again'); });
         var _tick = Date.now(), _lastKick = 0;
         setInterval(function(){
           var _gap = Date.now() - _tick; _tick = Date.now();
@@ -1172,7 +1201,7 @@ function FirebaseLink(){
           } else if (user) { firebase.auth().signOut(); }            // anonymous is useless under enforcement
           else signInKeyed();
         });
-      }).catch(function(){ self.libsMissing = true; onChange(); setTimeout(function(){ location.reload(); }, 60000); });
+      }).catch(function(){ self.libsMissing = true; onChange(); setTimeout(function(){ _reloadWhy('sync libraries did not load'); location.reload(); }, 60000); });
   };
   function signInKeyed(){
     var key = null; try { key = localStorage.getItem('lhv_driver_key'); } catch(e) {}
@@ -1183,8 +1212,58 @@ function FirebaseLink(){
   }
   function ref(p){ if (!p) return sess; return p.charAt(0) === '/' ? db.ref(p.slice(1)) : sess.child(p); }
   function whenReady(f){ if (self.ready) f(); else readyQ.push(f); }
-  self.on = function(path, fn){ whenReady(function(){ var r = ref(path); r.on('value', function(s){ fn(s.val()); }); self._subs.push(r); }); };
-  self.off = function(path){ try { ref(path).off(); } catch(e){} };
+  // ── LISTENERS THAT STAY ALIVE (desk-p51, MT 10/28 9:16 AM, 4:04-4:15 PM, 4:53-5:08 PM: the laptop's writes kept
+  // working, deskBeat every 30 s, while every listener went silent: the camera unheard for 15 min, the office reload and
+  // the Ask Claude answer never arrived). Every listener carries a cancel callback: a refused listener (sign-in lapsed
+  // on a hotspot drop) is attached again as soon as the sign-in is back. The desk can also re-attach them all
+  // (reattach) or rebuild the socket (kickSocket) when the camera is fresh on the server but silent here. Each event
+  // goes into a short timeline (_lsn) that the 30-s screen report carries to the office.
+  self._lsn = { cancels: 0, reattach: 0, kicks: 0, last: '', log: [] };
+  var _gen = 0;
+  function lsnLog(ev, extra){ try { var e = { t: Date.now(), ev: ev }; for (var k in (extra || {})) e[k] = extra[k];
+    self._lsn.log.push(e); if (self._lsn.log.length > 40) self._lsn.log.shift();
+    self._lsn.last = ev + ' ' + new Date().toLocaleTimeString() + (extra && extra.why ? ' ' + extra.why : ''); console.log('[desk] listeners: ' + ev, extra || ''); } catch (x) {} }
+  self._lsnLog = lsnLog;
+  function attach(sub){
+    var g = sub.gen = ++_gen; sub.ref = ref(sub.path); sub.dead = false;
+    sub.cb = function(s){ if (sub.gone || sub.gen !== g) return;
+      /* test only (?livetest=1): a frozen listener hears nothing, exactly like the stall */
+      if (self._freeze && (self._freeze === 'hard' || g <= self._freezeGen)) return;
+      sub.heardAt = Date.now(); sub.tries = 0; sub.fn(s.val()); };
+    sub.cancel = function(err){ if (sub.gen !== g || sub.gone) return; sub.dead = true; self._lsn.cancels++; sub.tries = (sub.tries || 0) + 1;
+      lsnLog('cancelled', { why: String(sub.path).slice(0, 30) + ' ' + String((err && (err.code || err.message)) || err || '').slice(0, 40) });
+      // only the refused listener is attached again, sooner first, then less often (a path the rules refuse for good
+      // costs one try every 10 min, never a storm): 2 s, 8 s, 32 s, 2 min, 8.5 min, 10 min
+      var wait = Math.min(600000, 2000 * Math.pow(4, Math.min(5, sub.tries - 1)));
+      clearTimeout(sub.reT); sub.reT = setTimeout(function(){ retryOne(sub, 'cancelled'); }, wait); };
+    sub.ref.on('value', sub.cb, sub.cancel);
+  }
+  function retryOne(sub, why){
+    if (sub.gone || !sub.dead) return;
+    var u = window.firebase && firebase.auth && firebase.auth().currentUser;
+    if (!u || !self.ready || !db) { clearTimeout(sub.reT); sub.reT = setTimeout(function(){ retryOne(sub, why); }, 5000); return; }
+    self._lsn.reattach++; lsnLog('reattach', { why: why + ' ' + String(sub.path).slice(0, 30) });
+    try { if (sub.ref && sub.cb) sub.ref.off('value', sub.cb); } catch (e) {}
+    try { attach(sub); } catch (e) {}
+  }
+  /* the socket or the sign-in came back: every refused listener tries again now */
+  function scheduleReattach(why){ self._subs.forEach(function(sub){ if (sub.dead) { clearTimeout(sub.reT); sub.reT = setTimeout(function(){ retryOne(sub, why); }, 1500); } }); }
+  self.reattach = function(why){
+    if (!db || !self.ready) return;
+    self._lsn.reattach++; lsnLog('reattach', { why: String(why || '').slice(0, 80) });
+    self._subs.forEach(function(sub){ try { if (sub.ref && sub.cb) sub.ref.off('value', sub.cb); } catch (e) {} });
+    self._subs.forEach(function(sub){ try { if (!sub.gone) attach(sub); } catch (e) {} });
+  };
+  self.kickSocket = function(why){
+    if (!db) return; self._lsn.kicks++; self.reconnects = (self.reconnects || 0) + 1; lsnLog('socket', { why: String(why || '').slice(0, 80) });
+    try { db.goOffline(); setTimeout(function(){ try { db.goOnline(); } catch (e) {} }, 1500); } catch (e) {}
+  };
+  if (Q.get('livetest') === '1') self._testFreeze = function(mode){ self._freeze = mode || null; self._freezeGen = _gen; lsnLog('test-freeze', { why: String(mode) }); };
+  self.on = function(path, fn){ var sub = { path: path, fn: fn }; self._subs.push(sub); whenReady(function(){ if (!sub.gone) attach(sub); }); };
+  self.off = function(path){
+    for (var i = self._subs.length - 1; i >= 0; i--) { var s = self._subs[i]; if (s.path !== path) continue;
+      s.gone = true; try { if (s.ref && s.cb) s.ref.off('value', s.cb); } catch (e) {} self._subs.splice(i, 1); }
+    try { ref(path).off(); } catch(e){} };
   self.update = function(path, obj){ return new Promise(function(res, rej){ whenReady(function(){ ref(path).update(obj).then(res, rej); }); }); };
   self.set = function(path, val){ return new Promise(function(res, rej){ whenReady(function(){ ref(path).set(val).then(res, rej); }); }); };
   self.once = function(path){ return new Promise(function(res, rej){ whenReady(function(){ ref(path).once('value').then(function(s){ res(s.val()); }, rej); }); }); };
@@ -1265,6 +1344,7 @@ function applyPhotoCounts(){
 function wireListeners(){
   link.on('logs', function(v){
     var logs = v || {}, keep = {};
+    _rawClosed = {}; Object.keys(logs).forEach(function(k){ if (logs[k] && logs[k].closed) _rawClosed[k] = 1; });
     Object.keys(logs).forEach(function(k){ if (!_isForeignLog(k, logs[k])) keep[k] = logs[k]; });
     _serverLogs = keep; rebuildLogs(); applyPhotoCounts(); cacheSnapshots(); renderAll();
   });
@@ -1277,6 +1357,7 @@ function wireListeners(){
   if (LOOK) link.on('deskLive', function(v){
     if (!v) return;
     try { sessionStorage.removeItem('lhv_look'); } catch (e) {}
+    _reloadWhy('look-only page went live');
     try { var u = new URL(location.href); u.searchParams.delete('look'); location.replace(u.toString()); } catch (e) { location.reload(); }
   });
   link.on('shipped', function(v){ _shippedSeqs = v || {}; rebuildLogs(); cacheSnapshots(); renderAll(); });
@@ -1288,7 +1369,7 @@ function wireListeners(){
     if (!_camOpen) { try { if (window._deskReloadWhenIdle && window.__deskWantReload) window._deskReloadWhenIdle(window.__deskWantReload, 'stop'); } catch (e) {} }
     renderAll();
   });
-  link.on('hbCam', function(v){ if (v && v !== _camHbLast) { _camHbLast = v; _camHbSeenAt = Date.now(); renderLink(); } });
+  link.on('hbCam', function(v){ if (v && v !== _camHbLast) { _camHbLast = v; _camHbSeenAt = Date.now(); _hbHeardAt = Date.now(); _lsnW.n = 0; renderLink(); } });
   wireJobDriven();
   // The desk takes over the field-log phone's two background duties toward the camera:
   setInterval(function(){ if (link.connected) link.update('', { hbRec: Date.now() }).catch(function(){}); }, 5000);
@@ -1304,6 +1385,57 @@ function wireJobDriven(){
   _jdPath = path; _jobDriven = {};
   if (path) link.on(path, function(v){ if (_jdPath !== path) return; _jobDriven = v || {}; cacheSnapshots(); renderAll(); });
 }
+// ── A STALLED LISTENER IS FOUND AND FIXED BY THE LAPTOP ITSELF (desk-p51) ───────────────────────────────────────────
+// The camera checks in (hbCam) every few seconds. Silent here for 2 min while the laptop's own beat round-trips = the
+// listeners are stalled: re-attach them all; if the server still has the camera fresh after that, rebuild the socket
+// too. A close the server has and the listeners never delivered counts the same. No reload, nothing for the driver.
+function _lsnWatch(){
+  try {
+    if (!link || !link.reattach || !link.connected) return;
+    var now = Date.now(), silent = _hbHeardAt ? now - _hbHeardAt : Infinity;
+    var srvFresh = !!(_lsnW.srvAt && now - _lsnW.srvAt < 120000 && _lsnW.srvHbAge != null && _lsnW.srvHbAge < 60000 && String(_lsnW.srvHb) !== String(_camHbLast));
+    if (silent < 120000 && !_lsnW.missed) return;
+    var recent = !!(_hbHeardAt && silent < 30 * 60000);
+    var gap = (srvFresh || _lsnW.missed) ? 110000 : (recent ? 170000 : 15 * 60000);
+    if (now - _lsnW.lastFix < gap) return;
+    var why = (_lsnW.missed ? _lsnW.missed + ' close(s) only the server had' : 'camera unheard ' + (isFinite(silent) ? Math.round(silent / 1000) + ' s' : 'yet')) + (srvFresh ? ', server has it ' + Math.round(_lsnW.srvHbAge / 1000) + ' s old' : '');
+    _lsnW.lastFix = now; _lsnW.n++; _lsnW.missed = 0;
+    if (_lsnW.n >= 2 && srvFresh && link.kickSocket) link.kickSocket(why);
+    link.reattach(why);
+  } catch (e) {}
+}
+setInterval(_lsnWatch, 15000);
+// ── THE SECOND OFFICE PATH (desk-p51) ── the 30-s deskPing (head of map.html) is a fetch now; its answer carries what
+// the listeners should have delivered: the office command (deskCmd), the office's Ask Claude answer (askReply), the
+// camera's check-in as the server has it (hbCam), and today's closes this laptop has not heard (it sends the closes it
+// knows, once a minute). It needs no live listener and no sign-in (the driver's key says who it is).
+window.__deskPingExtra = function(stage){
+  var o = {};
+  try { var k = localStorage.getItem('lhv_driver_key'); if (k) o.key = k; } catch (e) {}
+  try { if (state.job && state.job.bucket && link && Date.now() - _lsnW.knownAt > 25000) { _lsnW.knownAt = Date.now();
+    var kn = {}; Object.keys(_rawClosed).forEach(function(x){ kn[x] = 1; }); Object.keys(_serverLogs || {}).forEach(function(x){ if (_serverLogs[x] && _serverLogs[x].closed) kn[x] = 1; });
+    o.known = Object.keys(kn).join(','); } } catch (e) {}
+  return o;
+};
+window.__deskPingReply = function(j){
+  try {
+    if (!j || !j.ok) return;
+    if (j.hbCam && j.now) { _lsnW.srvAt = Date.now(); _lsnW.srvHb = j.hbCam; _lsnW.srvHbAge = Number(j.now) - Number(j.hbCam);
+      /* the camera IS checking in: the screen says so even while the listener is catching up */
+      if (_lsnW.srvHbAge < 60000) _camHbSeenAt = Math.max(_camHbSeenAt, Date.now() - _lsnW.srvHbAge); }
+    if (j.cmd && window.__deskCmdIn) { _lsnW.cmdIn++; window.__deskCmdIn(j.cmd, 'ping'); }
+    if (j.askReply && window.__askReplyIn) { _lsnW.askIn++; window.__askReplyIn(j.askReply); }
+    if (j.logs && typeof j.logs === 'object' && state.job) {
+      var n = 0, old = 0;
+      Object.keys(j.logs).forEach(function(k){ var l = j.logs[k]; if (!l || !l.closed) return; _rawClosed[k] = 1;
+        if (_isForeignLog(k, l) || (_serverLogs[k] && _serverLogs[k].closed)) return;
+        _serverLogs[k] = l; n++; if (Date.now() - Number(l.closedAt || 0) > 60000) old++; });
+      if (n) { _lsnW.closesIn += n; if (old) _lsnW.missed += old;
+        if (link && link._lsnLog) link._lsnLog('closes-from-server', { why: n + ' close(s)' });
+        rebuildLogs(); applyPhotoCounts(); cacheSnapshots(); renderAll(); _lsnWatch(); }
+    }
+  } catch (e) { console.warn('ping reply', e); }
+};
 // ── JOB IDENTITY → the camera (mirrors index.html startSession + fbWriteJob) ──
 // The camera's "No Active Job" gate, its photo folder (photoRoot = the county store)
 // and the server's FPL writer all key off these session fields. The field-log phone
@@ -1824,7 +1956,7 @@ setInterval(renderSetup, 5000);
 var _offSince = 0;
 function renderOffTag(){ try {   // desk-p43 (approved): a calm tag on the map, only after 20 s without the server
   var on = !!(link && link.connected); _offSince = on ? 0 : (_offSince || Date.now());
-  var el = $('off-tag'); if (!el) { el = document.createElement('div'); el.id = 'off-tag'; el.textContent = 'Offline · everything is saved on this laptop'; var mw = $('mapwrap'); if (!mw) return; mw.appendChild(el); }
+  var el = $('off-tag'); if (!el) { el = document.createElement('div'); el.id = 'off-tag'; el.textContent = 'No signal · keep driving, everything is saved'; var mw = $('mapwrap'); if (!mw) return; mw.appendChild(el); }
   el.style.display = (!on && Date.now() - _offSince > 20000) ? 'block' : 'none'; } catch (e) {} }
 setInterval(renderOffTag, 5000);
 function renderLink(){
@@ -1832,7 +1964,7 @@ function renderLink(){
   if (!link) { lp.className = 'pill warn'; lp.textContent = 'Starting…'; }
   else if (link.kind === 'firebase' && link.authFailed) { lp.className = 'pill bad'; lp.textContent = '⚠ NO SYNC ACCESS — call Dustin'; }
   else if (link.connected) { lp.className = 'pill ico ' + (n ? 'warn' : 'ok'); lp.textContent = n ? ('☁️ ' + n) : '☁️'; lp.title = n ? 'Online · sending ' + n : 'Online (office server)'; }
-  else { lp.className = 'pill ico bad'; lp.textContent = '☁️ ✕' + (n ? ' ' + n : ''); lp.title = 'Offline' + (n ? ' · ' + n + ' change' + (n>1?'s':'') + ' waiting' : '') + ' — nothing is lost'; }
+  else { lp.className = 'pill ico bad'; lp.textContent = '☁️ ✕' + (n ? ' ' + n : ''); lp.title = 'No signal · keep driving, everything is saved' + (n ? ' · ' + n + ' change' + (n>1?'s':'') + ' go out by themselves when signal is back' : ''); }
   var cp = $('cam-pill'), alive = _camHbSeenAt && (Date.now() - _camHbSeenAt) < 13000;
   var p2pLive = false;   // the direct line is retired (10/18)
   if ((!link || !link.connected) && p2pLive) { cp.className = 'pill ico ok'; cp.textContent = '📷'; cp.title = 'Camera linked over the direct line (no internet)'; }
@@ -1854,7 +1986,7 @@ function renderShipGate(){
   var pend = Number(_camSync.pending || 0), parked = Number(_camSync.parked || 0), idbDead = Number(_camSync.idb) < 0, held = Number(_camSync.held || 0);
   if (pend > 0 || idbDead) btn.setAttribute('data-blocked', '1'); else btn.removeAttribute('data-blocked');
   var set = function(cls, html, title){ b.className = 'pill ico ' + cls; b.innerHTML = html; b.title = title; };
-  if (!link || !link.connected) set('warn', '↑ ?', 'Offline — upload status unknown. Ship needs signal.');
+  if (!link || !link.connected) set('warn', '↑ ?', 'No signal · keep driving, everything is saved. Uploads show again when signal is back; SHIP goes out by itself then.');
   else if (_camSyncState() !== 'live') set('warn', '↑ ?', 'Camera not reporting — open the camera to confirm uploads');
   else if (idbDead) set('bad', '⛔', 'CAMERA PHONE CANNOT SAVE PHOTOS — keep its tab open, do NOT ship');
   else if (pend > 0) set('bad', '↑ <b>' + pend + '</b>', pend + ' photo' + (pend > 1 ? 's' : '') + ' uploading — counts down to ✓');
@@ -1883,13 +2015,44 @@ function _holdInfo(){
   alertBox('Camera holding', head + (hs.length ? '\n\n' + (live ? '' : 'Last it said: ') + hs.join(', ') : '') +
     '\n\nThey are safe on the phone and send when it has signal. Purple pins stay purple until then.');
 }
-async function shipSession(){
+// ── SHIP WAITS FOR SIGNAL BY ITSELF (desk-p51, Dustin 10/28: "it needs to alert you without causing panic"; never ask
+// a driver to do anything). SHIP pressed with no signal is kept on this laptop (desk_shipq) and goes out by itself the
+// moment the signal is back: same checks as a SHIP with signal, the driver's own OK already given. Anything that would
+// have to ask (photos still uploading, camera holding photos, a parcel open) just waits; it never pops up a question.
+var _shipQ = null; try { _shipQ = JSON.parse(localStorage.getItem('desk_shipq') || 'null'); } catch (e) { _shipQ = null; }
+var _shipQWhy = '', _shipRunning = false;
+function _shipQSet(v){ _shipQ = v; try { if (v) localStorage.setItem('desk_shipq', JSON.stringify(v)); else localStorage.removeItem('desk_shipq'); } catch (e) {} _shipQNote(); }
+function _shipQNote(){ try { var el = $('shipq-note');
+  if (!_shipQ) { if (el) el.style.display = 'none'; return; }
+  if (el && el.style.display === 'block') return;
+  _noteShow('shipq-note', 'SHIP is saved on this laptop. It goes out by itself as soon as there is signal and the photos are up. Nothing to do — keep driving.', 0); } catch (e) {} }
+function _shipQWait(why){ _shipQWhy = why; return false; }
+function _shipQTick(){
+  try {
+    if (!_shipQ || _shipRunning || LOOK) return;
+    if (!state.job || (_shipQ.bucket && state.job.bucket !== _shipQ.bucket)) { _shipQSet(null); return; }   // another county is open: that county's own SHIP
+    if (!link || !link.connected) { _shipQWhy = 'no signal'; _shipQNote(); return; }
+    shipSession({ auto: true });
+  } catch (e) {}
+}
+setInterval(_shipQTick, 15000);
+setTimeout(_shipQNote, 3000);
+async function shipSession(opts){
+  var auto = !!(opts && opts.auto);
   if (LOOK) { toast('Look-only: SHIP is off', 2500); return; }
-  if (_camOpen) { await alertBox('Tap STOP first', 'SEQ ' + _camOpen + ' is still open on the camera. Tap STOP on the camera to close it, then SHIP.'); return; }   // 10/18
-  if (!link || !link.connected) { await alertBox('SHIP needs signal', 'The laptop is offline. Turn on the phone hotspot (or wait for Wi-Fi), then press SHIP.\n\nNothing is lost — your taps are saved on this laptop.'); return; }
-  if (_outbox.length) { await alertBox('Sending your changes first', _outbox.length + ' change(s) are still being sent. Give it a few seconds, then SHIP.'); flushOutbox(); return; }
-  if (_camSyncState() === 'stale') { if (!(await confirmBox('Camera not reporting', 'The camera phone is not reporting its upload queue.\n\nIt may be asleep, closed, or out of signal — so I cannot tell whether photos are still uploading.\n\nOpen the camera and wait for the green banner, or ship anyway?', 'Ship anyway'))) return; }
-  if (_camSyncState() === 'live' && Number(_camSync && _camSync.idb) < 0) { await alertBox('Do not ship', '⛔ The camera phone reports it CANNOT SAVE PHOTOS (IndexedDB dead).\n\nIts unsent frames exist only in memory. Keep that tab open until the red banner clears, then ship.'); return; }
+  if (_shipRunning) return;
+  if (_camOpen) { if (auto) return _shipQWait('a parcel is open on the camera'); await alertBox('Tap STOP first', 'SEQ ' + _camOpen + ' is still open on the camera. Tap STOP on the camera to close it, then SHIP.'); return; }   // 10/18
+  if (!link || !link.connected) {
+    if (auto) return _shipQWait('no signal');
+    var _cl = Object.values(state.logs || {}).filter(function(l){ return seqStatus(l) === 'complete' && !l.shipped; }).length;
+    if (!_cl) { await alertBox('Nothing to ship', 'Nothing complete to ship yet.'); return; }
+    if (!(await confirmBox('Ship ' + _cl + ' parcel(s)?', 'No signal right now. SHIP is saved on this laptop and goes out by itself when signal is back.\n\nNothing to do — keep driving; everything is saved.', 'SHIP'))) return;
+    _shipQSet({ at: Date.now(), bucket: state.job && state.job.bucket, n: _cl }); return;
+  }
+  if (_outbox.length) { if (auto) { flushOutbox(); return _shipQWait('changes still sending'); } await alertBox('Sending your changes first', _outbox.length + ' change(s) are still being sent. Give it a few seconds, then SHIP.'); flushOutbox(); return; }
+  if (auto && _camSyncState() === 'stale' && (Number((_camSync && _camSync.pending) || 0) > 0 || Number(_camSync && _camSync.idb) < 0)) return _shipQWait('camera last said photos were still uploading');
+  if (!auto && _camSyncState() === 'stale') { if (!(await confirmBox('Camera not reporting', 'The camera phone is not reporting its upload queue.\n\nIt may be asleep, closed, or out of signal — so I cannot tell whether photos are still uploading.\n\nOpen the camera and wait for the green banner, or ship anyway?', 'Ship anyway'))) return; }
+  if (_camSyncState() === 'live' && Number(_camSync && _camSync.idb) < 0) { if (auto) return _shipQWait('camera cannot save photos'); await alertBox('Do not ship', '⛔ The camera phone reports it CANNOT SAVE PHOTOS (IndexedDB dead).\n\nIts unsent frames exist only in memory. Keep that tab open until the red banner clears, then ship.'); return; }
   var _pend = Number((_camSync && _camSync.pending) || 0);
   if (_pend > 0) {
     var _blocking = [], _redundant = [], _q = (_camSync && _camSync.bySeq) || null;
@@ -1897,34 +2060,38 @@ async function shipSession(){
     else Object.keys(_q).forEach(function(sq){ if (!(Number(_q[sq]) > 0)) return; var lg = state.logs[sq] || null;
       var shot = Number((lg && lg.photoCount) || 0), conf = Number(_photoCounts[sq] || 0);
       if (lg && lg.closed && shot > 0 && conf >= shot) _redundant.push(sq); else _blocking.push(sq); });
+    if (_blocking.length && auto) return _shipQWait('photos still uploading');
     if (_blocking.length) { await alertBox('Photos still uploading', '⇑ ' + _pend + ' photo(s) are still uploading.\n\nShipping now would SKIP the parcels those photos belong to:\n  SEQ ' + _blocking.join(', ') + '\n\nWait for the green "all photos uploaded" banner, then ship.'); return; }
-    if (!(await confirmBox('Duplicate frames only', '⇑ ' + _pend + ' photo(s) still queued, but every parcel they belong to is already COMPLETE:\n  SEQ ' + _redundant.join(', ') + '\n\nThose frames add nothing. Ship?', 'Ship'))) return;
+    if (!auto && !(await confirmBox('Duplicate frames only', '⇑ ' + _pend + ' photo(s) still queued, but every parcel they belong to is already COMPLETE:\n  SEQ ' + _redundant.join(', ') + '\n\nThose frames add nothing. Ship?', 'Ship'))) return;
   }
   var _parked = Number((_camSync && _camSync.parked) || 0);
-  if (_parked > 0 && !(await confirmBox('Failed uploads', '⚠ ' + _parked + ' photo(s) FAILED to upload and are parked.\n\nThose parcels will NOT ship until their photos land.\n\nShip everything else?', 'Ship the rest'))) return;
-  if (_dpOn()) { var _mk = _dpMarkedOpen(); if (_mk.length && !(await confirmBox('Marked, no photos heard', '🟣 You marked ' + _mk.length + ' parcel(s) driven, but no photos have come in for them:\n  SEQ ' + _mk.join(', ') + '\n\nA mark is not a close. If the camera still has their photos, let it upload first. Ship everything else?', 'Ship the rest'))) return; }
+  if (_parked > 0 && !auto && !(await confirmBox('Failed uploads', '⚠ ' + _parked + ' photo(s) FAILED to upload and are parked.\n\nThose parcels will NOT ship until their photos land.\n\nShip everything else?', 'Ship the rest'))) return;
+  if (_dpOn()) { var _mk = _dpMarkedOpen(); if (_mk.length && !auto && !(await confirmBox('Marked, no photos heard', '🟣 You marked ' + _mk.length + ' parcel(s) driven, but no photos have come in for them:\n  SEQ ' + _mk.join(', ') + '\n\nA mark is not a close. If the camera still has their photos, let it upload first. Ship everything else?', 'Ship the rest'))) return; }
   var logs = Object.values(state.logs);
   var complete = logs.filter(function(l){ return seqStatus(l) === 'complete'; });
   var incomplete = logs.filter(function(l){ return seqStatus(l) === 'incomplete'; }).length;
   var pending = state.seqs.length - complete.length - incomplete;
   var toShip = complete.filter(function(l){ return !l.shipped; });
-  if (!complete.length) { await alertBox('Nothing to ship', 'Nothing complete to ship yet.'); return; }
-  if (!toShip.length) { await alertBox('Already shipped', 'All ' + complete.length + ' complete parcels are already shipped.'); return; }
+  if (!complete.length) { if (auto) { _shipQSet(null); return; } await alertBox('Nothing to ship', 'Nothing complete to ship yet.'); return; }
+  if (!toShip.length) { if (auto) { _shipQSet(null); return; } await alertBox('Already shipped', 'All ' + complete.length + ' complete parcels are already shipped.'); return; }
   var warn = (pending > 0 || incomplete > 0) ? ('⚠ ' + pending + ' pending and ' + incomplete + ' incomplete parcel(s) still remain.\n\n') : '';
-  if (!(await confirmBox('Ship ' + toShip.length + ' parcel(s)?', warn + 'This delivers/confirms the FPL and LOCKS these parcels against accidental changes. Clients already see live data — this is your internal checkpoint.', 'SHIP'))) return;
+  if (!auto && !(await confirmBox('Ship ' + toShip.length + ' parcel(s)?', warn + 'This delivers/confirms the FPL and LOCKS these parcels against accidental changes. Clients already see live data — this is your internal checkpoint.', 'SHIP'))) return;
   var today = _lhvDate(), upd = {}, logUpd = {};
   toShip.forEach(function(l){ upd[l.seq] = today; logUpd[l.seq + '/shipped'] = true; logUpd[l.seq + '/shippedAt'] = today; });
-  var sb = $('ship-btn'); sb.disabled = true; sb.textContent = '…';
+  var sb = $('ship-btn'); sb.disabled = true; sb.textContent = '…'; _shipRunning = true;
   try {
     await withTimeout(Promise.all([link.update('shipped', upd), link.update('logs', logUpd)]), 20000);
     var back = await withTimeout(link.once('shipped/' + toShip[0].seq), 10000);   // a ship that did not land is not a ship
     if (!back) throw new Error('write did not land');
-    await alertBox('Shipped', '✓ Shipped ' + toShip.length + ' parcel(s). Locked.');
+    _shipQSet(null); _shipQWhy = '';
+    if (auto) _noteShow('sheet-note', '✓ Shipped ' + toShip.length + ' parcel(s) by itself when signal came back. Locked. Nothing to do.', 15000);
+    else await alertBox('Shipped', '✓ Shipped ' + toShip.length + ' parcel(s). Locked.');
     try { if (window._todayAfterShip) window._todayAfterShip(); } catch (e) {}
   } catch (e) {
-    await alertBox('SHIP FAILED', '⚠ SHIP FAILED — nothing was recorded.\n\nThese ' + toShip.length + ' parcel(s) are still UNSHIPPED. Your photos and ratings are safe; only the ship stamp did not land.\n\nCheck the hotspot and press SHIP again.\n\n(' + (e && e.message || e) + ')');
+    // the stamp did not land (signal dropped mid-SHIP): kept on this laptop and sent again by itself — never "press SHIP again"
+    _shipQSet({ at: Date.now(), bucket: state.job && state.job.bucket, n: toShip.length }); _shipQWhy = 'did not land: ' + String(e && e.message || e).slice(0, 60);
   }
-  sb.disabled = false; sb.textContent = 'SHIP'; renderAll();
+  _shipRunning = false; sb.disabled = false; sb.textContent = 'SHIP'; renderAll();
 }
 
 // ── DRIVER ACTIONS (the only three left after the AI cutover) ────────────────
@@ -2566,6 +2733,25 @@ setInterval(function(){
       limitsLoaded: SpeedLim.loaded(), segs: SpeedLim.count(), limitHere: lim }).catch(function(){});
   } catch (e) {}
 }, 60000);
+// ── LIVE TRUCK DOT (desk-p50, Dustin 10/28: "make sure i can see the live gps location tomorrow for the drivers in my
+// app"). sessions/<DRIVER>/deskPos = where this laptop is, from the SAME fix the map already uses (puck, else browser).
+// Checked every 30 s; written only when the truck moved > 15 m or 2 min passed since the last write (light on battery
+// and data). Never from a look-only page, never a stale fix (> 60 s old), never a test/mock GPS. Read by the office only.
+var _deskPosLast = null;
+setInterval(function(){
+  try {
+    if (LOOK || MOCK || Gps.mock || !DRIVER || DRIVER === 'DS' || !(window.link && link.connected)) return;
+    if (!Gps.pos || !Gps.fixAt || Gps.noFix) return;
+    var age = (Date.now() - Gps.fixAt) / 1000; if (age > 60) return;
+    var now = Date.now(), p = [Gps.pos[0], Gps.pos[1]];
+    if (_deskPosLast && distM(_deskPosLast.p, p) <= 15 && now - _deskPosLast.at < 120000) return;
+    var mph = Math.round((Gps.speedKn || 0) * 1.1508), hdg = (Gps.course != null && isFinite(Gps.course)) ? Math.round(Gps.course) : null;
+    var accM = /±\s*(\d+)/.exec(String(Gps.src || '')), acc = Gps.port ? (Gps.hdop ? Math.round(Gps.hdop * 5) : null) : (accM ? Number(accM[1]) : null);
+    link.set('deskPos', { at: now, lat: Math.round(p[0] * 1e6) / 1e6, lng: Math.round(p[1] * 1e6) / 1e6, acc: acc, mph: mph, hdg: hdg,
+      src: Gps.port ? 'puck' : 'browser', fixAgeS: Math.round(age), build: DESK_BUILD }).catch(function(){});
+    _deskPosLast = { p: p, at: now };
+  } catch (e) {}
+}, 30000);
 var _folderAsk = false;
 document.addEventListener('pointerdown', async function(){
   if (_folderAsk) return; _folderAsk = true;
@@ -2712,7 +2898,7 @@ function renderStrip(){
     cnt('st-pending', 'pending', 'to drive') + cnt('st-incomplete', 'incomplete', 'not closed') + cnt('st-uploading', 'uploading', 'upload') +
     cnt('st-rating', 'rating', 'rating') + cnt('st-complete', 'complete', 'driven') +
     '<div class="s-link" style="background:' + (on ? (n ? '#3a2a12' : 'rgba(46,204,138,.14)') : 'rgba(232,64,64,.18)') + ';color:' + (on ? (n ? '#ffd08a' : 'var(--success)') : '#ff9a9a') + '">' +
-      (on ? '● Online' : '○ Offline') + (n ? '<br>' + n + ' waiting' : '') + '</div>';
+      (on ? '● Online' : '○ No signal<br>keep driving') + (n ? '<br>' + n + ' waiting' : '') + '</div>';
 }
 // ── FLOATING MAP PANELS: a – button shrinks each to a small tab; state remembered ──
 function makeMinimizable(id, tabLabel){
@@ -3206,7 +3392,7 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
     t.push(Date.now()); try { sessionStorage.setItem('desk_upd_tries', JSON.stringify(t)); } catch (e) {}
     _pending = true; _want = null;
     try { if (window._noteShow) _noteShow('upd-note', 'Updating your map from the office — back in 15 seconds. Nothing to do.', 0); } catch (e) {}
-    setTimeout(function(){ if (idle()) { location.reload(); return; } _pending = false; _want = label; try { var n = $('upd-note'); if (n) n.style.display = 'none'; } catch (e) {} }, 2000);
+    setTimeout(function(){ if (idle()) { _reloadWhy('update ' + label + (why ? ' (' + why + ')' : '')); location.reload(); return; } _pending = false; _want = label; try { var n = $('upd-note'); if (n) n.style.display = 'none'; } catch (e) {} }, 2000);
   }
   function chk(){
     if (_pending || !navigator.onLine) return;
@@ -3217,6 +3403,10 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
     }).catch(function(){});
   }
   window._deskReloadWhenIdle = reloadWhenIdle;
+  // the map's offline helper (map-sw sw2) says a newer build landed after this page opened on the saved copy (slow
+  // link): move onto it at the next idle moment, the same as any update (desk-p51; the helper never reloads a page itself)
+  try { if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function(e){ var d = e.data || {};
+    if (d.type === 'map-newer' && /^desk-p\w+$/.test(String(d.build || '')) && d.build !== DESK_BUILD) reloadWhenIdle(d.build, 'newer copy landed'); }); } catch (e) {}
   setTimeout(chk, 30000); setInterval(chk, 5 * 60e3);
   setInterval(function(){ if (_want) reloadWhenIdle(_want); }, 20000);
   window.addEventListener('online', function(){ setTimeout(chk, 3000); });
@@ -3231,21 +3421,27 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
       var _viaLink = window.link && link.on && link.connected;
       var _viaApp = !_viaLink && window.firebase && firebase.apps && firebase.apps.length && firebase.auth && firebase.auth().currentUser && DRIVER;
       if (!_viaLink && !_viaApp) return; clearInterval(_cmdWire);
-      var _sub = _viaLink ? function(fn){ link.on('deskCmd', fn); } : function(fn){ firebase.database().ref('sessions/' + DRIVER + '/deskCmd').on('value', function(sn){ fn(sn.val()); }); };
-      var _ans = function(o){ try { if (window.link && link.set) return link.set('deskCmdDone', o); return firebase.database().ref('sessions/' + DRIVER + '/deskCmdDone').set(o); } catch (e) { return Promise.resolve(); } };
-      _sub(function(v){ try {
+      // the start-screen listener re-attaches itself when it is refused (desk-p51, same as the link's listeners)
+      var _appSub = function(fn){ var r = firebase.database().ref('sessions/' + DRIVER + '/deskCmd');
+        r.on('value', function(sn){ if (window.link && link._freeze === 'hard') return; fn(sn.val()); }, function(){ setTimeout(function(){ try { _appSub(fn); } catch (e) {} }, 10000); }); };
+      var _sub = _viaLink ? function(fn){ link.on('deskCmd', fn); } : _appSub;
+      _sub(function(v){ _cmdIn(v, 'listener'); });
+    } catch (e) {}
+  }, 3000);
+  // one handler for both paths: the listener above and the 30-s ping's answer (desk-p51), each command runs once
+  function _cmdIn(v, via){ try {
         if (!v || !v.at || !v.do) return;
         if (LOOK && Q.get('livetest') !== '1') return;   // a look-only page never answers the office for a driver
         var k = 'desk_cmd_done_at'; if (String(localStorage.getItem(k) || '') === String(v.at)) return;
         if (Date.now() - Number(v.at) > 12 * 3600e3) return;   // a stale one from another day
         localStorage.setItem(k, String(v.at));
-        try { _ans({ at: Date.now(), cmdAt: v.at, do: v.do, build: DESK_BUILD }).catch(function(){}); } catch (e) {}
+        var _ans = function(o){ try { if (window.link && link.set) return link.set('deskCmdDone', o); return firebase.database().ref('sessions/' + DRIVER + '/deskCmdDone').set(o); } catch (e) { return Promise.resolve(); } };
+        try { _ans({ at: Date.now(), cmdAt: v.at, do: v.do, build: DESK_BUILD, via: via || 'listener' }).catch(function(){}); } catch (e) {}
         if (v.do === 'diag') { if (window.__micDiag) window.__micDiag(); }   // office mic/speech diagnostic: reads only, nothing on screen
         else if (v.do === 'reload') reloadWhenIdle('from the office');
         else if (v.do === 'sheet' && window.deskAutoSheet) { (async function(){ try { var d = await DB.get('kv', 'day'); if (d) { d.sheetReadyAt = 0; await DB.put('kv', 'day', d); } } catch (e) {} window.deskAutoSheet('office'); })(); }
-      } catch (e) {} });
-    } catch (e) {}
-  }, 3000);
+      } catch (e) {} }
+  window.__deskCmdIn = _cmdIn;
 })();
 // ── THE SHEET LOADS ITSELF + REDEEMED PARCELS LEAVE THE MAP (desk-p40, Dustin 10/27: "the less a new person has
 // to do", "and no more stopping") ────────────────────────────────────────────────────────────────────────────
@@ -3259,7 +3455,7 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
 var _autoSheet = { busy: false, pending: null, bucket: null, rnRef: null, rnBucket: null };
 var SHEET_URL = 'https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet';
 function _noteShow(id, html, ms){ try { var el = $(id); if (!el) { el = document.createElement('div'); el.id = id; $('mapwrap').appendChild(el); }
-  el.innerHTML = html; el.style.display = 'block'; clearTimeout(el._t); if (ms) el._t = setTimeout(function(){ el.style.display = 'none'; }, ms);
+  el.innerHTML = html; el.style.display = 'block'; clearTimeout(el._t); _noteKeep(el.textContent); if (ms) el._t = setTimeout(function(){ el.style.display = 'none'; }, ms);
   var x = el.querySelector('button'); if (x) x.onclick = function(){ el.style.display = 'none'; }; } catch (e) {} }
 async function deskAutoSheet(why){
   try {
@@ -3527,6 +3723,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   window._todayRender = function(){ render(); drawNext(); };
   window._todayOpen = function(B){ B = String(B || '').toUpperCase(); return DB.get('kv', 'schedSheet:' + B).then(function(x){ return (x && x.b64) ? switchTo(B, 'session') : false; }); };
   window._todaySet = function(sch){ _sched = sch; render(); drawNext(); };   // the harness / mock preview only
+  window._todaySched = function(){ return _sched; };   // desk-p51: the offline-ready report reads today's + the next county
   // ── THE MORNING OPENS ITSELF (desk-p43, Dustin 10/27: "open the map, the county is already there" — for a new driver
   // or a wiped laptop too). On every page open: a laptop with no county of its own signs in with the driver's key,
   // gets today's counties, saves them and opens one. A laptop still on a county that is not on today's schedule (and
@@ -3623,6 +3820,93 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   setInterval(refresh, 15 * 60e3); window.addEventListener('online', function(){ setTimeout(refresh, 3000); });
 })();
 </script>
+<script>
+// ── OFFLINE-READY REPORT (desk-p51, Dustin 10/28: Ohio counties "out of service for hours") ─────────────────────────
+// For today's county and the next scheduled one, every kit file is checked: the sheet, outlines, roads and speed limits
+// are on this laptop when they sit in its saved store (the TODAY preload fetches them while there is signal); the big
+// imagery and streets packs are read from the laptop's Dropbox folder END TO END in 8 MB pieces, which brings an
+// online-only Dropbox file down while there is signal. Reading only happens off the drive: never while the car moves,
+// a parcel is open on the camera or the camera has checked in during the last 10 minutes. A file read in full is
+// remembered (size + date) for the day. The result rides in the 30-s screen report as offlineReady. No driver action.
+(function(){
+  if (MOCK && !/[?&]offtest=1/.test(location.search)) return;
+  var KINDS = [['xlsx', 'sheet'], ['imagery', '.imagery.pmtiles'], ['streets', '.streets.pmtiles'], ['boundaries', 'bounds'], ['roads', 'roads'], ['speedlimits', 'speedlimits']];
+  var R = window.__offReady = { at: 0, by: {}, busy: false };
+  var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+  function offDrive(){ try {
+    if (_camOpen) return false;
+    if (Gps.pos && Gps.fixAt && Date.now() - Gps.fixAt < 60000 && Number(Gps.speedKn || 0) * 1.1508 >= 3) return false;
+    if (_hbHeardAt && Date.now() - _hbHeardAt < 10 * 60000) return false;
+    if (_camHbSeenAt && Date.now() - _camHbSeenAt < 10 * 60000) return false;
+    return navigator.onLine !== false && document.visibilityState !== 'hidden'; } catch (e) { return false; } }
+  async function granted(h){ try { return (await h.queryPermission({ mode: 'read' })) === 'granted'; } catch (e) { return false; } }
+  async function folderFile(B, name){   // → handle | 'no folder' | 'needs a tap' | 'not in folder'
+    var dir = null, root = null, any = false;
+    try { dir = await DB.get('kv', 'dirHandle'); } catch (e) {}
+    if (dir && dir.name === B) { any = true; if (!(await granted(dir))) return 'needs a tap'; try { return await dir.getFileHandle(name); } catch (e) {} }
+    try { root = await DB.get('kv', 'imageryRoot'); } catch (e) {}
+    if (root) { any = true; if (!(await granted(root))) return 'needs a tap';
+      var sub = null; if (root.name === B) sub = root; else { try { sub = await root.getDirectoryHandle(B); } catch (e) {} }
+      if (sub) { try { return await sub.getFileHandle(name); } catch (e) {} } }
+    return any ? 'not in folder' : 'no folder';
+  }
+  async function readAll(B, kind, fh){   // 'yes' | 'reading N%' | 'paused N%' | 'read error'
+    var f = await fh.getFile(), sig = f.size + ':' + f.lastModified, k = 'desk_offr_' + B + '_' + kind, rec = null;
+    try { rec = JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) {}
+    if (rec && rec.sig === sig && rec.day === _lhvDate() && rec.pos >= f.size) return 'yes';
+    var pos = (rec && rec.sig === sig && rec.pos < f.size) ? rec.pos : 0, CH = 8 * 1024 * 1024, mark = pos;
+    var keep = function(){ try { localStorage.setItem(k, JSON.stringify({ sig: sig, day: _lhvDate(), pos: pos })); } catch (e) {} };
+    while (pos < f.size) {
+      if (!offDrive()) { keep(); return 'paused ' + Math.floor(pos * 100 / f.size) + '%'; }
+      try { await f.slice(pos, Math.min(f.size, pos + CH)).arrayBuffer(); } catch (e) { keep(); return 'read error'; }
+      pos = Math.min(f.size, pos + CH);
+      R.by[B] = R.by[B] || {}; R.by[B][kind] = 'reading ' + Math.floor(pos * 100 / f.size) + '%';
+      if (pos - mark >= 64 * 1024 * 1024) { mark = pos; keep(); }
+      await sleep(120);
+    }
+    keep(); return 'yes';
+  }
+  async function checkOne(B, isCur){
+    var out = R.by[B] = R.by[B] || {};
+    for (var i = 0; i < KINDS.length; i++) {
+      var kind = KINDS[i][0], v = 'no';
+      try {
+        if (kind === 'xlsx') v = (isCur && state.seqs && state.seqs.length) || (await DB.get('kv', 'schedSheet:' + B)) ? 'yes' : 'no';
+        else if (kind === 'boundaries' || kind === 'roads' || kind === 'speedlimits') v = (await DB.get('kv', KINDS[i][1] + ':' + B)) ? 'yes' : 'no';
+        else {
+          var rec = await DB.get('kv', kind + ':' + B);
+          if (rec && rec.blob) v = 'yes';
+          else { var fh = await folderFile(B, B + KINDS[i][1]);
+            if (typeof fh === 'string') v = fh;
+            else if (!offDrive()) { var prev = String(out[kind] || ''); v = /^(yes|paused|reading)/.test(prev) ? prev.replace(/^reading/, 'paused') : 'waits for a stop'; }
+            else v = await readAll(B, kind, fh); }
+        }
+      } catch (e) { v = 'check failed'; }
+      out[kind] = v;
+    }
+  }
+  function nextBucket(cur){ try { var s = window._todaySched && window._todaySched(); if (!s) return '';
+    var t = (s.today || []).map(function(c){ return c.bucket; }), i = t.indexOf(cur);
+    if (i >= 0 && t[i + 1]) return t[i + 1]; if (i < 0 && t.length && t[0] !== cur) return t[0];
+    return ((s.tomorrow || [])[0] || {}).bucket || ''; } catch (e) { return ''; } }
+  async function run(){
+    if (R.busy || LOOK || !state.job || !state.job.bucket) return;
+    R.busy = true;
+    try { var B = state.job.bucket, N = nextBucket(B), keep = {};
+      keep[B] = 1; if (N) keep[N] = 1; Object.keys(R.by).forEach(function(k){ if (!keep[k]) delete R.by[k]; });
+      await checkOne(B, true); if (N && N !== B) await checkOne(N, false);
+      R.at = Date.now(); R.cur = B; R.next = N || null;
+    } catch (e) { console.warn('offline-ready', e); }
+    R.busy = false;
+  }
+  // compact for the screen report: { OH_STARK: { xlsx: 'yes', imagery: 'paused 40%', ... }, next: 'OH_CLARK', at: '6:05 PM' }
+  window.__offReadyReport = function(){ try { if (!R.at) return null; var o = {}; Object.keys(R.by).forEach(function(b){ o[b] = R.by[b]; });
+    o.next = R.next; o.at = new Date(R.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); return o; } catch (e) { return null; } };
+  window.__offReadyRun = run;
+  if (/[?&]offtest=1/.test(location.search)) window.__offReadyReadAll = readAll;   /* harness only */
+  setTimeout(run, 90000); setInterval(run, 10 * 60e3);
+})();
+</script>
 <script>document.write('<script src="desk/ask.js?b=' + DESK_BUILD + '"><\/script>');</script>
 <!-- (DIRECT LINE laptop ⇄ camera, desk/p2p.js: REMOVED 10/18 — the car router is retired.) -->
 <script>
@@ -3668,9 +3952,14 @@ window.__micDiag = async function(){
     return { view: (st && getComputedStyle(st).display !== 'none') ? 'start' : (pins ? 'map' : 'blank'), rows: (window.state && state.seqs) ? state.seqs.length : 0, pins: pins,
       sel: (window.state && state.currentSeq) || null, bucket: (window.state && state.job && state.job.bucket) || null,
       link: !!(window.link && link.connected), camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
-      outbox: (window._outbox || []).length, ask: window.__askState || null, build: window.DESK_BUILD || '', rc: (window.link && link.reconnects) || 0, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '' };
+      outbox: (window._outbox || []).length, ask: window.__askState || null, build: window.DESK_BUILD || '', rc: (window.link && link.reconnects) || 0, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '',
+      /* desk-p51: listener health (cancelled / re-attached / socket rebuilt / what the ping brought), a SHIP waiting for signal, offline-ready kit */
+      lsn: (function(){ try { var L = (window.link && link._lsn) || {}, W = window._lsnW || {}; var hb = window._hbHeardAt ? Math.round((Date.now() - window._hbHeardAt) / 1000) : null;
+        return { heardS: hb, c: L.cancels || 0, r: L.reattach || 0, k: L.kicks || 0, last: String(L.last || '').slice(0, 70), srvHbS: W.srvHbAge != null ? Math.round(W.srvHbAge / 1000) : null, closesIn: W.closesIn || 0, cmdIn: W.cmdIn || 0, askIn: W.askIn || 0 }; } catch (e) { return null; } })(),
+      shipQ: window._shipQ ? { at: window._shipQ.at, n: window._shipQ.n, why: String(window._shipQWhy || '').slice(0, 60) } : null,
+      offlineReady: window.__offReadyReport ? window.__offReadyReport() : null };
   } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
-  function tick(){ var sc = screen(); if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
+  function tick(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
   setTimeout(tick, 5000); setInterval(tick, 30000);
 })();
 </script>

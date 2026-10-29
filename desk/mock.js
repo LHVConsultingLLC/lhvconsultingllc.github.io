@@ -33,9 +33,13 @@
   }
   function update(p, obj){ Object.keys(obj).forEach(function(k){ setAt(abs(p) + '/' + k, obj[k]); }); save(); notify(); }
   function set(p, v){ setAt(abs(p), v); save(); notify(); }
+  // STALL REPLAY (desk-p51, MT 10/28): 'hard' = no listener hears anything, even re-attached ones (only the 30-s ping
+  // path can help); 'soft' = the listeners attached so far hear nothing, re-attached ones do. Writes still land.
+  var freeze = null, freezeGen = 0, gen = 0;
+  function deaf(L){ if (L.gen == null) return false; return freeze === 'hard' || (freeze === 'soft' && L.gen <= freezeGen); }   // the fake camera's own listener is not the desk's
   function notify(force){
     if (!online) return;
-    listeners.forEach(function(L){ var v = getAt(L.path), j = JSON.stringify(v);
+    listeners.forEach(function(L){ if (deaf(L)) return; var v = getAt(L.path), j = JSON.stringify(v);
       if (force || j !== L.last) { L.last = j; try { L.fn(v == null ? null : JSON.parse(j)); } catch (e) { console.error(e); } } });
   }
   var MockServer = window.MockServer = { get: function(p){ return getAt(abs(p)); }, update: update, set: set,
@@ -43,19 +47,30 @@
     setOnline: function(on){ online = !!on; localStorage.setItem(ONK, on ? '1' : '0');
       if (window.__mockLink) { window.__mockLink.connected = online; window.__mockLink._onChange && window.__mockLink._onChange(); }
       if (online) notify(true); renderPanel(); },
-    reset: function(){ T = {}; save(); localStorage.removeItem(ONK); online = true; } };
+    reset: function(){ T = {}; save(); localStorage.removeItem(ONK); online = true; },
+    freeze: function(mode){ freeze = mode || null; freezeGen = gen; },
+    listenerCount: function(){ return listeners.length; } };
 
   // ── the desk's link ──────────────────────────────────────────────────────
   window.MockLink = function(){
     var self = { kind: 'mock', connected: online };
     window.__mockLink = self;
     self.start = function(driver, onChange){ self._onChange = onChange; setTimeout(function(){ onChange(); notify(true); }, 50); };
-    self.on = function(path, fn){ var L = { path: abs(path), fn: fn, last: undefined }; listeners.push(L);
-      if (online) { var v = getAt(L.path); L.last = JSON.stringify(v); setTimeout(function(){ fn(v == null ? null : JSON.parse(L.last)); }, 0); } };
+    self._lsn = { cancels: 0, reattach: 0, kicks: 0, last: '', log: [] };
+    self._lsnLog = function(ev, x){ self._lsn.log.push({ t: Date.now(), ev: ev, why: x && x.why }); self._lsn.last = ev + ' ' + new Date().toLocaleTimeString() + (x && x.why ? ' ' + x.why : ''); };
+    var mine = [];
+    var add = function(path, fn){ var L = { path: path, fn: fn, last: undefined, gen: ++gen }; listeners.push(L); mine.push(L);
+      if (online && !deaf(L)) { var v = getAt(L.path); L.last = JSON.stringify(v); setTimeout(function(){ if (listeners.indexOf(L) >= 0) fn(v == null ? null : JSON.parse(L.last)); }, 0); } };
+    self.on = function(path, fn){ add(abs(path), fn); };
+    // like the live link: every listener of this link dropped and attached again (a fresh subscription)
+    self.reattach = function(why){ self._lsn.reattach++; self._lsnLog('reattach', { why: why });
+      var old = mine; mine = []; old.forEach(function(L){ var i = listeners.indexOf(L); if (i >= 0) { listeners.splice(i, 1); add(L.path, L.fn); } }); };
+    self.kickSocket = function(why){ self._lsn.kicks++; self._lsnLog('socket', { why: why }); };
     self.update = function(path, obj){ if (!online) return new Promise(function(){}); return new Promise(function(res){ setTimeout(function(){ update(path, obj); res(); }, 120); }); };
     self.set = function(path, v){ if (!online) return new Promise(function(){}); return new Promise(function(res){ setTimeout(function(){ set(path, v); res(); }, 120); }); };
     self.once = function(path){ if (!online) return new Promise(function(){}); return Promise.resolve(getAt(abs(path))); };
-    self.off = function(path){ var a = abs(path); for (var i = listeners.length - 1; i >= 0; i--) if (listeners[i].path === a) listeners.splice(i, 1); };   // like the live link (county switch without a reload)
+    self.off = function(path){ var a = abs(path); for (var i = listeners.length - 1; i >= 0; i--) if (listeners[i].path === a) listeners.splice(i, 1);
+      mine = mine.filter(function(L){ return L.path !== a; }); };   // like the live link (county switch without a reload)
     return self;
   };
 

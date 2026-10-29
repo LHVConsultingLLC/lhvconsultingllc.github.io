@@ -100,11 +100,15 @@
   // ── THE OFFICE ANSWER (Dustin 10/26): a HOLD question is picked up by the Field App Claude; its answer lands in
   // sessions/<D>/askReply and shows up (and is spoken) in this same box, so the driver never has to look elsewhere.
   var lastReplyAt = 0;
+  // one handler for both paths (desk-p51): the listener and the 30-s ping's answer, which needs no live listener
+  // (MT 10/28: the office's answers never showed while the laptop's listeners were stalled). Each answer shows once.
+  function replyIn(v){ try { if (!v || !v.at || Number(v.at) <= lastReplyAt) return; lastReplyAt = Number(v.at);
+    if (Date.now() - Number(v.at) > 6 * 3600000) return;   /* not a stale one from another day */
+    open(); render(v.q || 'your question', v.say || '', v.action || null, 'Claude · answered by the office'); st.replyAt = Number(v.at); } catch (e) {} }
+  window.__askReplyIn = replyIn;
   function watchReplies(){
     try { if (!window.link || !link.on || watchReplies.done) return; watchReplies.done = true;
-      link.on('askReply', function(v){ if (!v || !v.at || Number(v.at) <= lastReplyAt) return; lastReplyAt = Number(v.at);
-        if (Date.now() - Number(v.at) > 6 * 3600000) return;   // not a stale one from another day
-        open(); render(v.q || 'your question', v.say || '', v.action || null, 'Claude · answered by the office'); });
+      link.on('askReply', replyIn);
     } catch (e) {}
   }
   setInterval(watchReplies, 3000);
