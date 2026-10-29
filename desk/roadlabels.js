@@ -30,10 +30,14 @@
       loadingFor = b;
       Promise.resolve(window.DeskAPI.roads()).then(function (j) {
         if (j && j.kind === 'lhv-roads' && (!j.bucket || j.bucket === b)) { own = new window.LHVRoute.Graph(j, {}); ownBucket = b; sync(); }
-      }).catch(function () {});
+        else retryLater(b);
+      }).catch(function () { retryLater(b); });
     }
     return null;
   }
+
+  // desk-p52: no road file yet (it is still being saved to this laptop): ask again in 30 s, never give up for the day
+  function retryLater(b) { setTimeout(function () { if (loadingFor === b && ownBucket !== b) loadingFor = null; }, 30000); }
 
   // arrows every ~110 px along a one-way piece, pointing the legal direction
   function drawArrows(ctx, G, paths, z) {
@@ -57,12 +61,100 @@
     });
   }
 
+  // STREET NAMES (desk-p52; Dustin 10/28: "why arent street names on the map" / "if drivers are operating on non imagery
+  // for some reason, then they need street names as well"). The USGS street map has NO street names at any zoom (checked
+  // 10/28: Canton z15/z16 tiles carry only town names and route shields), so both bases get them from the county road
+  // file, offline: Imagery = white text, dark halo; Streets = dark text, white halo. From z14 (driving zooms). One label
+  // per street per tile, on the longest nearly straight run of that street that fits inside the tile (pieces of one
+  // road that keep the same heading are joined, so a block-long street gets its name, not only a long straight one).
+  var NAMES_Z = 14;
+  // the way the drive file writes addresses ("4136 Vernon Ave Nw"): Avenue -> Ave, Northwest -> NW, ...
+  var ABBR = { avenue: 'Ave', street: 'St', road: 'Rd', drive: 'Dr', boulevard: 'Blvd', lane: 'Ln', court: 'Ct', place: 'Pl',
+    circle: 'Cir', parkway: 'Pkwy', highway: 'Hwy', terrace: 'Ter', trail: 'Trl', square: 'Sq', pike: 'Pike', way: 'Way' };
+  var DIRS = { north: 'N', south: 'S', east: 'E', west: 'W', northwest: 'NW', northeast: 'NE', southwest: 'SW', southeast: 'SE' };
+  var _short = {};
+  function shortName(nm) {
+    if (!nm) return ''; if (_short[nm] != null) return _short[nm];
+    var w = String(nm).split(/\s+/), n = w.length;
+    var out = w.map(function (x, i) { var k = x.toLowerCase();
+      if (DIRS[k] && (i === 0 || i === n - 1) && n > 2) return DIRS[k];
+      if (ABBR[k] && i > 0 && (i === n - 1 || (i === n - 2 && DIRS[w[n - 1].toLowerCase()]))) return ABBR[k];
+      return x; }).join(' ');
+    return (_short[nm] = out);
+  }
+  function drawNames(ctx, G, paths, z, sz, onImagery) {
+    var fs = z >= 17 ? 13.5 : z >= 15 ? 12.5 : 11.5;
+    ctx.font = '700 ' + fs + 'px -apple-system,Segoe UI,system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // the road file is split at every crossing, so a street is many short pieces: join each name's pieces end to end
+    // (same point, same heading within ~20 degrees) into straight runs, then label the runs
+    var byName = {};
+    paths.forEach(function (p) {
+      var nm = shortName(G.edgeName(p.e)); if (!nm || p.pts.length < 2) return;
+      if (z < 15 && !MAJOR[p.cls] && p.cls !== 'tertiary' && p.cls !== 'residential' && p.cls !== 'unclassified') return;
+      var L = byName[nm] || (byName[nm] = []);
+      for (var k = 0; k + 1 < p.pts.length; k++) { var a = p.pts[k], b = p.pts[k + 1]; if (a[0] !== b[0] || a[1] !== b[1]) L.push([a, b]); }
+    });
+    var key = function (q) { return Math.round(q[0]) + ',' + Math.round(q[1]); };
+    var hd = function (a, b) { return Math.atan2(b[1] - a[1], b[0] - a[0]); };
+    var near = function (x, y) { var d = Math.abs(x - y); if (d > Math.PI) d = 2 * Math.PI - d; return d <= 0.35; };
+    var cand = [];
+    Object.keys(byName).forEach(function (nm) {
+      var segs = byName[nm], adj = {}, used = [], tw = ctx.measureText(nm).width;
+      segs.forEach(function (sg, i) { [key(sg[0]), key(sg[1])].forEach(function (k) { (adj[k] = adj[k] || []).push(i); }); });
+      var grow = function (pts, atEnd) {   // keep adding the piece that carries on straight from this end
+        for (var guard = 0; guard < 400; guard++) {
+          var tip = atEnd ? pts[pts.length - 1] : pts[0], prev = atEnd ? pts[pts.length - 2] : pts[1], h = hd(prev, tip), nx = null;
+          (adj[key(tip)] || []).some(function (j) { if (used[j]) return false; var sg = segs[j], o = key(sg[0]) === key(tip) ? sg[1] : sg[0];
+            if (!near(hd(tip, o), h)) return false; used[j] = 1; nx = o; return true; });
+          if (!nx) return; if (atEnd) pts.push(nx); else pts.unshift(nx);
+        }
+      };
+      for (var i = 0; i < segs.length; i++) {
+        if (used[i]) continue; used[i] = 1;
+        var pts = [segs[i][0], segs[i][1]]; grow(pts, true); grow(pts, false);
+        var A = pts[0], B = pts[pts.length - 1], ang = hd(A, B);
+        if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
+        var hx = Math.abs(Math.cos(ang)) * tw / 2 + 6, hy = Math.abs(Math.sin(ang)) * tw / 2 + 7;
+        // the part of this straight run that lies inside the tile (inset so the whole label fits): Liang-Barsky
+        var x0 = A[0], y0 = A[1], dx = B[0] - x0, dy = B[1] - y0, t0 = 0, t1 = 1, ok = true;
+        [[-dx, x0 - hx], [dx, sz.x - hx - x0], [-dy, y0 - hy], [dy, sz.y - hy - y0]].forEach(function (c) {
+          if (!ok) return; var pp = c[0], qq = c[1];
+          if (pp === 0) { if (qq < 0) ok = false; return; }
+          var r = qq / pp; if (pp < 0) { if (r > t1) ok = false; else if (r > t0) t0 = r; } else { if (r < t0) ok = false; else if (r < t1) t1 = r; } });
+        if (!ok) continue;
+        // t0..t1 = where the label's centre may sit (the whole label inside the tile); it sits nearest the run's middle
+        // and needs half its width of road on either side
+        var full = Math.hypot(dx, dy), tm = Math.max(t0, Math.min(t1, 0.5)), half = tw / 2 + 3;
+        if (tm * full < half || (1 - tm) * full < half) continue;
+        cand.push({ nm: nm, len: full, ang: ang, mx: x0 + dx * tm, my: y0 + dy * tm, hx: hx, hy: hy });
+      }
+    });
+    // longest runs first; one label per street per tile; never on top of another label
+    cand.sort(function (a, b) { return b.len - a.len; });
+    var done = {}, boxes = [];
+    ctx.lineJoin = 'round';
+    cand.forEach(function (c) {
+      if (done[c.nm]) return;
+      if (boxes.some(function (q) { return Math.abs(q.mx - c.mx) < q.hx + c.hx - 4 && Math.abs(q.my - c.my) < q.hy + c.hy - 4; })) return;
+      done[c.nm] = 1; boxes.push(c);
+      ctx.save(); ctx.translate(c.mx, c.my); ctx.rotate(c.ang);
+      ctx.lineWidth = onImagery ? 3.5 : 3.2; ctx.strokeStyle = onImagery ? 'rgba(0,0,0,.88)' : 'rgba(255,255,255,.95)'; ctx.strokeText(c.nm, 0, 0);
+      ctx.fillStyle = onImagery ? '#fff' : '#1b2233'; ctx.fillText(c.nm, 0, 0); ctx.restore();
+    });
+  }
+
   function makeLayer(G, arrowsOnly) {
     var L = window.L;
     var RL = L.GridLayer.extend({
-      createTile: function (c) {
-        var cv = document.createElement('canvas'), sz = this.getTileSize(); cv.width = sz.x; cv.height = sz.y;
+      // desk-p52: each tile is drawn in its own task after Leaflet asks for it, never inside a zoom or pan frame
+      createTile: function (c, done) {
+        var cv = document.createElement('canvas'), sz = this.getTileSize(), self = this; cv.width = sz.x; cv.height = sz.y;
+        setTimeout(function () { var e = null; try { self._draw(cv, c, sz); } catch (x) { e = x; } done(null, cv); }, 0);
+        return cv;
+      },
+      _draw: function (cv, c, sz) {
         var ctx = cv.getContext('2d'), map = this._map, z = c.z, ox = c.x * sz.x, oy = c.y * sz.y;
+        if (!map) return cv;
         var nw = map.unproject([ox, oy], z), se = map.unproject([ox + sz.x, oy + sz.y], z);
         var cell = G.cell, x0 = Math.floor(nw.lng / cell) - 1, x1 = Math.floor(se.lng / cell) + 1,
             y0 = Math.floor(se.lat / cell) - 1, y1 = Math.floor(nw.lat / cell) + 1;
@@ -79,33 +171,20 @@
           var g = G.geo[e], pts = []; for (var k = 0; k < g.length; k += 2) pts.push(pt(g[k], g[k + 1]));
           paths.push({ e: e, cls: cls, pts: pts });
         });
-        if (arrowsOnly) { if (z >= 15) drawArrows(ctx, G, paths, z); return cv; }
-        var w = function (cls) { return (WIDTH[cls] || 2) * (z >= 17 ? 1.3 : 1); };
-        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        paths.forEach(function (p) { ctx.beginPath(); p.pts.forEach(function (q, i) { i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
-          ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = w(p.cls) + 2; ctx.stroke(); });
-        paths.forEach(function (p) { ctx.beginPath(); p.pts.forEach(function (q, i) { i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
-          ctx.strokeStyle = MAJOR[p.cls] ? 'rgba(255,214,120,.92)' : 'rgba(255,255,255,.85)'; ctx.lineWidth = w(p.cls); ctx.stroke(); });
-        if (z >= 15) {   // names: the longest piece of each street whose whole label fits inside this tile
-          ctx.font = '700 ' + (z >= 17 ? 13 : 11.5) + 'px -apple-system,Segoe UI,system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          var best = {}, tw = {};
-          paths.forEach(function (p) { var nm = G.edgeName(p.e); if (!nm) return;
-            if (tw[nm] == null) tw[nm] = ctx.measureText(nm).width;
-            for (var k = 0; k + 1 < p.pts.length; k++) { var a = p.pts[k], b = p.pts[k + 1], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-              var len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < Math.min(tw[nm] * 0.6, 60)) continue;
-              var ang = Math.atan2(b[1] - a[1], b[0] - a[0]); if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
-              var hx = Math.abs(Math.cos(ang)) * tw[nm] / 2 + 8, hy = Math.abs(Math.sin(ang)) * tw[nm] / 2 + 8;
-              if (mx - hx < 0 || my - hy < 0 || mx + hx > sz.x || my + hy > sz.y) continue;   // would be cut at the tile edge
-              if (!best[nm] || len > best[nm].len) best[nm] = { len: len, ang: ang, mx: mx, my: my }; } });
-          Object.keys(best).forEach(function (nm) { var s = best[nm];
-            ctx.save(); ctx.translate(s.mx, s.my); ctx.rotate(s.ang);
-            ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(nm, 0, 0); ctx.fillStyle = '#fff'; ctx.fillText(nm, 0, 0); ctx.restore(); });
-          drawArrows(ctx, G, paths, z);
+        if (!arrowsOnly) {
+          var w = function (cls) { return (WIDTH[cls] || 2) * (z >= 17 ? 1.3 : 1); };
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          paths.forEach(function (p) { ctx.beginPath(); p.pts.forEach(function (q, i) { i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
+            ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = w(p.cls) + 2; ctx.stroke(); });
+          paths.forEach(function (p) { ctx.beginPath(); p.pts.forEach(function (q, i) { i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
+            ctx.strokeStyle = MAJOR[p.cls] ? 'rgba(255,214,120,.92)' : 'rgba(255,255,255,.85)'; ctx.lineWidth = w(p.cls); ctx.stroke(); });
         }
+        if (z >= NAMES_Z) drawNames(ctx, G, paths, z, sz, !arrowsOnly);
+        if (z >= 15) drawArrows(ctx, G, paths, z);
         return cv;
       }
     });
-    return new RL({ zIndex: arrowsOnly ? 9 : 8, maxZoom: 20, attribution: arrowsOnly ? 'One-way streets © OpenStreetMap contributors' : 'Roads © OpenStreetMap contributors' });
+    return new RL({ zIndex: arrowsOnly ? 9 : 8, maxZoom: 20, attribution: arrowsOnly ? 'Street names, one-way streets © OpenStreetMap contributors' : 'Roads © OpenStreetMap contributors' });
   }
 
   function sync() {

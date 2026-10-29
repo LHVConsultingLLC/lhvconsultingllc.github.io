@@ -317,6 +317,29 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 .zclose .pin.sel{width:31px;height:31px;margin:-31px 0 0 0;font-size:13px;transform:rotate(-45deg) scale(1.4)}
 .zclose .pin.cam::after{inset:-8px;border-width:3px}
 .zclose .pin .plus{font-size:10px;left:calc(100% + 7px);padding:1px 5px}
+/* STACKED SPOT (desk-p52, MT 10/28 + RF 10/25): parcels on top of each other = ONE pin + a count badge (same white pill
+   as the old "+1"); a tap opens the list of every seq there. Nothing here changes the zoom. */
+.pin .plus.stk{min-width:12px;text-align:center}
+#stklist{position:fixed;z-index:1200;display:none;width:300px;max-width:calc(100vw - 16px);background:rgba(11,13,20,.97);color:#e6e8f0;border:1.5px solid #fff;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.7);font:600 13px/1.3 var(--font-display);overflow:hidden}
+#stklist .stk-h{display:flex;align-items:center;gap:8px;padding:8px 8px 7px 11px;border-bottom:1px solid #2c3350;font:800 14px var(--font-display);color:#fff}
+#stklist .stk-h span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stklist .stk-x{border:0;background:transparent;color:#fff;font:900 18px/1 system-ui;width:34px;height:30px;border-radius:7px;cursor:pointer;flex:0 0 auto}
+#stklist .stk-x:hover{background:#1c2236}
+#stklist .stk-b{overflow-y:auto;overscroll-behavior:contain}
+#stklist .stk-row{display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid #1c2236;cursor:pointer;min-height:40px;touch-action:manipulation}
+#stklist .stk-row:last-child{border-bottom:0}
+#stklist .stk-row:hover{background:#1a2033}
+#stklist .stk-row.on{background:#1d2a4d}
+#stklist .stk-row.done{opacity:.62}
+#stklist .stk-row.off{cursor:default;opacity:.5}
+#stklist .stk-seq{flex:0 0 auto;min-width:46px;text-align:center;padding:4px 7px;border-radius:8px;font:900 15px/1 var(--font-display);background:#1f6fe5;color:#fff;border:2px solid rgba(0,0,0,.6)}
+#stklist .stk-seq.uploading,#stklist .stk-seq.rating,#stklist .stk-seq.worked{background:var(--success);color:#0b0d14}
+#stklist .stk-seq.incomplete{background:var(--danger)}#stklist .stk-seq.marked{background:#8e44ff}
+#stklist .stk-seq.complete,#stklist .stk-seq.earlier,#stklist .stk-seq.redeemed{background:#5d6478;color:#e6e8f0}
+#stklist .stk-t{flex:1;min-width:0}
+#stklist .stk-a{font:700 14px/1.25 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stklist .stk-s{font:600 12px/1.25 var(--font-display);color:#aab1c7}
+@media (any-pointer:coarse){ #stklist .stk-row{min-height:46px} }
 /* GPS = a big BRIGHT ORANGE navigation arrow with a white outline and a pulsing ring
    (Dustin 2026-10-11: "more colorful and obvious"; parcels are BLUE, as in Maptitude,
    and orange is used for nothing else). Stopped or no heading: an orange dot, same
@@ -735,6 +758,45 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
 #setup .it .m{flex:0 0 18px;font-weight:700}
 #setup .it.ok .m{color:#2ecc8a} #setup .it.bad .m{color:#ff6b6b}
 #setup .it .fx{color:#d9c7a8;font-size:12px}
+#setup .it .sh{display:none}
+/* SHORT LAPTOP SCREENS (desk-p52; MT 10/28 10:15 PM "make the list on the bottom left just a little bigger so it shows
+   more than two", Dustin 10:30 PM "shrink the parcel card on the computer some to show a bit more of the next
+   properties"). Mike's Windows touch laptop at 1366x768 showed 2 list rows under the card. On a laptop-sized screen
+   up to 900 px tall: a slimmer card (smaller address, slim Route, the waiting line and the value on one line), the
+   calm notes one line each, and the list always keeps room for about 6 rows (the panel scrolls only if it must).
+   Text stays 12 px or more; buttons stay 40 px tall for a finger. Last in the sheet so it wins. */
+@media (min-width:700px) and (max-height:900px){
+  html body #log #card{padding:6px 10px!important;margin-top:5px!important}
+  html body #log #card .toprow .seqbig{font-size:21px}
+  html body #log #card .toprow .seqbig.s4{font-size:19px}
+  html body #log #card .areabig b{font-size:20px}
+  html body #log #card .areabig{padding:3px 6px}
+  html body #log #card .addr{font-size:18px;line-height:1.15;margin-top:3px}
+  html body #log #card .city{font-size:14px;margin-top:0}
+  html body #log #card .pid{font-size:12px;margin-top:1px}
+  html body #log #card .aerfloat{height:26px;font-size:13px}
+  html body #log .navbtns,html body #log .acts{margin-top:5px!important}
+  html body #log .navbtns .aerbtn{min-height:40px!important;height:40px;font-size:14.5px!important;padding:2px 4px!important}
+  html body #log .acts .act{min-height:40px!important;font-size:13px!important}
+  html body #log #card > .ai{margin-top:4px;padding-top:2px}
+  html body #log #card .ai.waitrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 10px}
+  html body #log #card .ai.waitrow > .ai-wait{font-size:14px;padding:1px 0;flex:0 1 auto}
+  html body #log #card .ai.waitrow > .ai-tail:empty{display:none}
+  html body #log #card .ai.waitrow > .cardfoot{flex:1 1 auto;min-width:0}
+  html body #log #card .ai.waitrow .cardfoot .details{border-top:0;margin-top:0;padding-top:0}
+  html body #log #card .details,html body #log #card .cardfoot .details{font-size:13px}
+  html body #log #card .ai-why{font-size:13px;max-height:calc(2 * 1.25em);line-height:1.25}
+  html body #log #card .ai-big{font-size:20px}
+  html body #log #card .ai-pct{font-size:18px}
+  html body #log #card .ai-k{font-size:13.5px}
+  #setup{margin:4px 8px;padding:4px 9px;font-size:12.5px}
+  #setup.calm .it{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0}
+  #setup.calm .it .lg{display:none}
+  #setup.calm .it .sh{display:inline}
+  #setup:not(.calm):not(.ok) .it.ok{display:inline-flex;margin:1px 10px 1px 0}
+  #today-dd{margin:4px 8px}
+  html body #log #list{min-height:186px;flex:1 1 0}
+}
 </style>
 </head>
 <body>
@@ -863,7 +925,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p51';
+var DESK_BUILD = 'desk-p52';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -873,9 +935,15 @@ var ROUTING = Q.get('routing') === '1';
 var ROUTE_MODULE = Q.get('route') !== '0';   // Route here is ON by default (Dustin 10/11 test); ?route=0 turns it off
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+/* desk-p52 (map lag, MT 10/28): one formatter, and today's date kept for 1 s. A new Intl.DateTimeFormat on every call
+   cost ~40 µs, and the pin pass asks for today once per pin (1,045 on Stark): ~40 ms per pass, several passes per tap. */
+var _lhvFmt = null, _lhvToday = { at: 0, v: '' };
 function _lhvDate(when){   // EASTERN, never UTC — same rule as index.html
   if (MOCK_ASOF && !when) return MOCK_ASOF;
-  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(when || new Date()); }
+  var now = Date.now();
+  if (!when && _lhvToday.v && now - _lhvToday.at < 1000 && now >= _lhvToday.at) return _lhvToday.v;
+  try { if (!_lhvFmt) _lhvFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+    var v = _lhvFmt.format(when || new Date(now)); if (!when) _lhvToday = { at: now, v: v }; return v; }
   catch (e) { return new Date((when||new Date()).getTime() - 4*3600*1000).toISOString().slice(0,10); }
 }
 // WHY DID THE MAP RESTART (desk-p51, MT 10/28 4:15:28 PM: a restart with no office command and no new build). The last
@@ -956,7 +1024,7 @@ var DRIVER = null;
 
 // ════════════════════════════════════════════════════════════════════════════
 // 3. STATUS RULES — MIRRORED from docs/index.html (m271 working copy, re-synced 10/11 evening:
-//    _ratingOf, AI cutover date 2026-10-12, aiAssess.nvfr, evidence-close sweep).
+//    _ratingOf, AI cutover date 2026-10-12, aiAssess.nvfr; the evidence-close sweep is NOT mirrored: desk-p52, only STOP closes).
 //    Kept line-for-line so the desk and the phone can never disagree.
 //    Go-live: move these into one shared file both pages load (README §Go-live).
 // ════════════════════════════════════════════════════════════════════════════
@@ -1705,11 +1773,12 @@ function renderAll(){   // rAF, with a timer backstop: a hidden/occluded window 
     _renderHooks.forEach(function(f){ try { f(); } catch (e) { console.warn('route hook', e); } }); };
   requestAnimationFrame(go); setTimeout(go, 150);
 }
-// ── EVIDENCE-COMPLETE ⇒ CLOSED (index.html _evidenceCloseSweep, a field-log duty) ──
-// A parcel with a rating (or the AI's) and every photo confirmed is closed, so it can
-// never sit open forever. Goes through the outbox like a driver tap: works offline,
-// replays in order, absolute values only.
-var _sweepQueued = {};
+// ── PAST-DAY RESET SWEEP (desk-p52) ──
+// THE DESK NEVER CLOSES A PARCEL (Dustin 10/28: "stop is the close of the loop"). Only the driver's STOP on the
+// camera closes one; nothing closes because of time, rating, speed or distance. The old evidence-close loop
+// (rating + every photo confirmed -> closed, ported from index.html 10/11) is REMOVED: on 10/28 it closed MT's
+// 646, 513 and 302 while they were still OPEN on his camera, and the camera then popped "already complete".
+// What is left here is only the reset of a PAST day's closed-with-no-photos log, which is not a close.
 var _resetQueued = {};
 function _evidenceCloseSweep(){
   if (!state.job) return 0;
@@ -1728,19 +1797,6 @@ function _evidenceCloseSweep(){
     link.set('logs/' + k, null).catch(function(){ delete _resetQueued[k]; });
     try { link.update('heardLog', (function(o){ o['desk' + Date.now() + '_' + k] = { ts: Date.now(), seq: k, raw: '[DESK RESET] seq ' + k + ' was closed with no photos -> to drive' }; return o; })({})).catch(function(){}); } catch (e) {}
   });
-  Object.keys(state.logs || {}).forEach(function(k){
-    var l = state.logs[k];
-    if (!l || l.closed || _sweepQueued[k] || !_rowFor(k)) return;
-    if (_ratingOf(l) === null && !_aiGaveUp(l)) return;   // the AI giving up is ours: photos in = done for the driver (10/11)
-    var shot = Number(l.photoCount || 0), conf = Number((_photoCounts && _photoCounts[k]) || 0);
-    if (!(_effNoPhotos(l) ? true : (shot > 0 && conf >= shot))) return;
-    _sweepQueued[k] = 1; n++;
-    queueAction(k, { closed: true, closedAt: Date.now(), touched: true, driveDate: l.driveDate || _lhvDate(),
-      unoccupied: l.unoccupied || 'N', boardedUp: l.boardedUp || 'N', burnedDown: l.burnedDown || 'N' }, 'AUTO-CLOSED ON EVIDENCE')
-      .then(function(){ delete _sweepQueued[k]; });
-    try { if (link && link.connected) link.update('heardLog', (function(o){ o['desk' + Date.now() + '_' + k] = { ts: Date.now(), seq: k, raw: '[AUTO-CLOSED ON EVIDENCE] (desk) build=' + l.build + ' photos=' + shot }; return o; })({})).catch(function(){}); } catch (e) {}
-  });
-  if (n) toast('✓ ' + n + ' finished parcel' + (n > 1 ? 's' : '') + ' auto-closed', 3000);
   return n;
 }
 function listable(){ return state.seqs.filter(function(s){ return !_drivenOnAnEarlierDay(s.seq); }); }
@@ -1864,11 +1920,11 @@ function renderCard(){
     '</div></div>' +
     '<div class="navbtns">' + _cardActionHtml(seq) + '</div>' +
     '<div class="acts">' +
-      (seqStatus(l, seq) === 'incomplete' && !locked ? '<button class="act" id="b-close" title="Close it: the photos are good"><span>✓ Close</span></button>' : '') +
+      (seqStatus(l, seq) === 'incomplete' && !locked && String(seq) !== String(_camOpen) ? '<button class="act" id="b-close" title="Close it: the photos are good"><span>✓ Close</span></button>' : '') +
       ((pc > 0 || shot > 0) ? '<button class="act" id="b-reopen"' + (locked ? ' disabled' : '') + ' title="Reopen: set today\'s photos aside and put it back on the drive list"><span>↺ Reopen</span></button>' : '') +
     '</div>' +
  (pend ? '<div style="margin-top:6px;color:var(--warning);font:700 13px var(--font-display)">⏳ ' + pend + ' change(s) ' + (link && link.connected ? 'sending…' : 'saved on this laptop, waiting for signal') + '</div>' : '') +
-    '<div class="ai">' + ai + '<div class="cardfoot">' + detailsLine(r) + '</div></div>';   // value / parcel map: reference only, at the bottom
+    '<div class="ai' + (/^<div class="ai-wait">/.test(ai) ? ' waitrow' : '') + '">' + ai + '<div class="cardfoot">' + detailsLine(r) + '</div></div>';   // value / parcel map: reference only, at the bottom
   // NO PHOTOS IS OFF THE LAPTOP (Dustin 2026-10-17: "with the new system, no pictures is no longer an
   // option" / "i wanted it taken off"). Every parcel is photographed. The button and the P key are gone;
   // an older log that already carries noPhotos still displays as it was.
@@ -1944,8 +2000,13 @@ function renderSetup(){
       charger: 'Laptop is not charging — plug it in when you get a chance.',
       gps: 'GPS puck is not connected — the map still works. Reconnect it when you are parked.',
       camera: 'The camera phone has been quiet for a few minutes — it catches up by itself.' };
+    /* desk-p52: a short screen shows the one-line version (the whole sentence stays in the tooltip) */
+    var CALM_SH = { online: 'No internet — keep working, it reconnects by itself',
+      charger: 'Laptop not charging — plug in when you can',
+      gps: 'GPS puck not connected — the map still works',
+      camera: 'Camera quiet a few minutes — it catches up by itself' };
     el.className = 'calm';
-    el.innerHTML = items.filter(function(it){ return !st[it[0]]; }).map(function(it){ return '<div class="it">' + CALM[it[0]] + '</div>'; }).join('');
+    el.innerHTML = items.filter(function(it){ return !st[it[0]]; }).map(function(it){ return '<div class="it" title="' + esc(CALM[it[0]]) + '"><span class="lg">' + CALM[it[0]] + '</span><span class="sh">' + CALM_SH[it[0]] + '</span></div>'; }).join('');
     return;
   }
   el.className = '';
@@ -2110,6 +2171,8 @@ function _canAct(){
 // camera's STOP: 1-2 photos asks first.
 async function actCloseHere(){
   var s = state.currentSeq; if (!s) return; var l = state.logs[s] || {};
+  /* desk-p52 (Dustin 10/28 "stop is the close of the loop"): a parcel OPEN on the camera is closed by its STOP only */
+  if (String(s) === String(_camOpen)) { toast('SEQ ' + s + ' is open on the camera. STOP on the camera closes it.', 3500); return; }
   var n = Math.max(Number(_photoCounts[s] || 0), Number(l.photoCount || 0));
   if (n < 1) return;
   if (n < 3 && !(await confirmBox('Close SEQ ' + s + '?', 'It has only ' + n + ' photo' + (n === 1 ? '' : 's') + '. Every parcel needs 3–6.', 'Close with ' + n))) return;
@@ -2284,6 +2347,8 @@ function initMap(){
   var _sb = localStorage.getItem('desk_base'); setBase(_sb === 'img' ? 'img' : 'topo');   // Grid only removed 10/11
   map.on('zoomend', function(){ var _z = map.getZoom(); $('map').classList.toggle('zlo', _z < 12); $('map').classList.toggle('zmid', _z >= 12 && _z < 14); $('map').classList.toggle('zclose', _z >= 17); drawGrid();
     if (_base === 'img' && !map.hasLayer(baseLayers[_baseKey('img')])) { ['img', 'imgClose'].forEach(function(n){ if (map.hasLayer(baseLayers[n])) map.removeLayer(baseLayers[n]); }); baseLayers[_baseKey('img')].addTo(map); } });   // z 0 keeps it under NAIP and ABOVE the saved Streets pack (bringToBack sank it below the pack: Dustin 10/11 'half imagery half streets')
+  /* desk-p52: stacked spots depend on the zoom: the driver's zoom re-sorts them (the code never zooms) */
+  map.on('zoomend', function(){ if (state.job) renderMapState(); });
   map.on('moveend', function(){ drawGrid(); renderOutlines(); if ($('order').value === 'view' || ($('order').value === 'near' && !Gps.pos)) renderList(); if (!Gps.pos) renderWhere(); });
   // a real gesture (finger, mouse, wheel, zoom buttons) — not our own setView/panTo
   map.getContainer().addEventListener('pointerdown', function(){ _userMapAt = Date.now(); }, true);
@@ -2336,12 +2401,15 @@ function renderOutlines(){
 }
 function buildMarkers(){
   Object.keys(markers).forEach(function(k){ map.removeLayer(markers[k]); }); markers = {}; _pinLabels = {};
+  _stkClose(); _stkP0 = {}; _stk = { sig: '', clusters: [], of: {}, rep: {}, n: {} };
   var pts = [];
   state.seqs.forEach(function(r){
     var p = ll(r); if (!p) return; pts.push(p);
     var g = sameAddrSeqs(r.seq); if (g && pinKey(r.seq) !== String(r.seq)) return;   // SAME ADDRESS: one pin per group, at its lowest seq
-    var m = L.marker(p, { icon: L.divIcon({ className: '', html: '<div class="pin pending"><span>' + esc(r.seq) + (g ? '<b class="plus">+' + (g.length - 1) + '</b>' : '') + '</span></div>', iconSize: [0, 0] }), keyboard: false, title: 'SEQ ' + (g ? g.join(', ') : r.seq) + ' · ' + r.street });
-    m.on('click', function(){ select(r.seq, { pan: false, from: 'map' }); });
+    /* desk-p52: the "+N" of a batch is now the live count badge (renderMapState), shared with stacked spots */
+    var m = L.marker(p, { icon: L.divIcon({ className: '', html: '<div class="pin pending"><span>' + esc(r.seq) + '</span></div>', iconSize: [0, 0] }), keyboard: false, title: 'SEQ ' + (g ? g.join(', ') : r.seq) + ' · ' + r.street });
+    _stkP0[String(r.seq)] = map.project(p, 0);   /* zoom-0 pixels: any zoom is these x 2^z, so stacks cost no projection */
+    m.on('click', function(){ var k = String(r.seq); if ((_stk.n[k] || 0) >= 2 && _stk.rep[k] === k) { _stkOpenAt(k); return; } select(r.seq, { pan: false, from: 'map' }); });
     // a quick second tap on a pin never zooms the map
     m.on('dblclick', function(e){ try { L.DomEvent.stop(e); if (e.originalEvent) L.DomEvent.stop(e.originalEvent); } catch (x) {} });
     m.bindTooltip(esc((g ? g.join(', ') : r.seq) + ' · ' + (r.street || '')), { direction: 'top', offset: [0, -44], className: 'plabel', opacity: 1 });
@@ -2359,6 +2427,7 @@ function renderMapState(){
   if (!map || !state.job) return;
   var nx = nextSeq(), live = {};
   listable().forEach(function(r){ live[String(r.seq)] = 1; });
+  var _shown = [], _cnt = {}, _el = {}, _pk = {};
   Object.keys(markers).forEach(function(seq){
     var m = markers[seq], el = m.getElement(); if (!el) return; var pin = el.firstChild; if (!pin) return;
     var gs = groupSeqs(seq, live);   // SAME ADDRESS: the pin stands for every live member
@@ -2371,16 +2440,20 @@ function renderMapState(){
     // cleared" (Dustin 10/11). Incomplete stays RED. The selected and camera parcels always show; "Show driven"
     // brings the day's finished dots back in green.
     if (S === 'complete' && !_showDriven && !sel && !cam) { el.style.display = 'none'; return; }
-    el.style.display = '';
     var _ship = gs.every(function(x){ var lx = state.logs[x]; return lx && lx.shipped; });
     var _infl = gs.some(function(x){ var lx = state.logs[x]; return lx && lx.closed && (_onPhone(x) > 0 || Number(lx.shotCount || 0) > Number((_photoCounts && _photoCounts[String(x)]) || 0)); });
     var cls = 'pin ' + S + (_ship ? ' ship' : '') + (sel ? ' sel' : '') + (cam ? ' cam' : '') + (inGroup(seq, nx) ? ' next' : '') + (_infl ? ' inflight' : '');
     if (pin.className !== cls) pin.className = cls;
     m.setZIndexOffset(sel ? 2000 : cam ? 1500 : S === 'pending' ? 500 : 0);
+    /* STACKED SPOT (desk-p52): how many parcels this pin stands for (a driven member only counts while it shows) */
+    _cnt[seq] = gs.filter(function(x){ return _showDriven || displayStatus(x) !== 'complete' || String(x) === String(state.currentSeq) || String(x) === String(_cameraSeq); }).length || 1;
+    _pk[seq] = sel ? 0 : cam ? 1 : inGroup(seq, nx) ? 2 : (S === 'pending' || S === 'incomplete' || S === 'marked') ? 3 : 4;
+    _shown.push(seq); _el[seq] = el;
   });
-  // route: today's list in seq (route) order; the driven part is drawn dim
-  var order = listable().filter(function(r){ return ll(r); }).sort(function(a,b){ return parseInt(a.seq,10) - parseInt(b.seq,10); });
-  var sig = order.map(function(r){ return r.seq + (displayStatus(r.seq) === 'pending' ? 'p' : 'd'); }).join(',');
+  _stkApply(_shown, _cnt, _pk, _el);
+  // route: today's list in seq (route) order; the driven part is drawn dim (only with ?routing=1: the sort is skipped otherwise)
+  var order = ROUTING ? listable().filter(function(r){ return ll(r); }).sort(function(a,b){ return parseInt(a.seq,10) - parseInt(b.seq,10); }) : [];
+  var sig = ROUTING ? order.map(function(r){ return r.seq + (displayStatus(r.seq) === 'pending' ? 'p' : 'd'); }).join(',') : '';
   if (ROUTING && sig !== _lastRouteSig) {
     _lastRouteSig = sig;
     if (routeLine) map.removeLayer(routeLine); if (doneLine) map.removeLayer(doneLine);
@@ -2390,6 +2463,122 @@ function renderMapState(){
   }
   renderAerialViews();
 }
+// ── STACKED SPOTS (desk-p52; MT 10/28, RF 10/25 "only one sequence shows at a spot") ─────────────────────────────
+// Pins under STK_PX apart at the CURRENT zoom (the same point always) are one stack: ONE pin shows (selected > camera >
+// next > to drive > lowest seq) with a count badge, the others step aside. A tap on it opens a list of every seq there
+// (closed / driven earlier / redeemed ones too, shown as such); a row does what a pin tap does (select, no zoom). The
+// zoom is never touched: the driver zooming in splits a stack by itself. Display only: counts, best-next and the pace
+// still count every parcel on its own. Stacks are recomputed only when the shown pins or the zoom change (one pass of
+// x 2^z on zoom-0 pixels, no projection), so the map does not get slower.
+var STK_PX = 8, _stkP0 = {}, _stk = { sig: '', clusters: [], of: {}, rep: {}, n: {} }, _stkRedeemed = { bucket: null, rows: [] };
+var _stkView = { key: null, x: 0, y: 0, z: null, seqs: [] };
+function _stkCluster(shown){
+  var z = map.getZoom(), sig = z + '|' + shown.join(',');
+  if (sig === _stk.sig) return;
+  var sc = Math.pow(2, z), R = STK_PX, cells = {}, clusters = [], of = {};
+  for (var i = 0; i < shown.length; i++) {
+    var k = shown[i], p0 = _stkP0[k]; if (!p0) continue;
+    var x = p0.x * sc, y = p0.y * sc, cx = Math.floor(x / R), cy = Math.floor(y / R), best = null, bd = R * R;
+    for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) {
+      var cl = cells[(cx + dx) + ':' + (cy + dy)]; if (!cl) continue;
+      for (var j = 0; j < cl.length; j++) { var c = cl[j], d2 = (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y); if (d2 <= bd) { bd = d2; best = c; } }
+    }
+    if (best) { best.m.push(k); of[k] = best; }
+    else { var c2 = { x: x, y: y, m: [k] }; clusters.push(c2); of[k] = c2; (cells[cx + ':' + cy] = cells[cx + ':' + cy] || []).push(c2); }
+  }
+  _stk.sig = sig; _stk.clusters = clusters; _stk.of = of; _stk.z = z;
+}
+function _stkApply(shown, cnt, pk, els){
+  _stkCluster(shown);
+  var rep = {}, n = {};
+  _stk.clusters.forEach(function(c){
+    var r = c.m[0], tot = 0, i;
+    for (i = 0; i < c.m.length; i++) { var k = c.m[i]; tot += cnt[k] || 1; if ((pk[k] == null ? 9 : pk[k]) < (pk[r] == null ? 9 : pk[r])) r = k; }
+    for (i = 0; i < c.m.length; i++) rep[c.m[i]] = r;
+    n[r] = tot;
+  });
+  _stk.rep = rep; _stk.n = n;
+  shown.forEach(function(k){
+    var el = els[k], top = rep[k] == null || rep[k] === k, d = top ? '' : 'none';
+    if (el.style.display !== d) el.style.display = d;
+    if (!top) return;
+    var sp = el.firstChild && el.firstChild.firstChild; if (!sp || !sp.querySelector) return;
+    var b = sp.querySelector('b.plus'), want = (n[k] || 1) >= 2 ? String(n[k]) : '';
+    if (want) { if (!b) { b = document.createElement('b'); b.className = 'plus stk'; sp.appendChild(b); } if (b.textContent !== want) b.textContent = want; }
+    else if (b) b.parentNode.removeChild(b);
+  });
+  if (_stkView.key) _stkRender();
+}
+function _stkRedeemedAdd(r){
+  var B = state.job && state.job.bucket; if (_stkRedeemed.bucket !== B) _stkRedeemed = { bucket: B, rows: [] };
+  var p = ll(r); if (p) _stkRedeemed.rows.push({ seq: String(r.seq), street: r.street || '', p: p });
+}
+function _stkNear(x, y, sc){ var R2 = STK_PX * STK_PX, out = [];
+  Object.keys(_stkP0).forEach(function(k){ var p = _stkP0[k], dx = p.x * sc - x, dy = p.y * sc - y; if (dx * dx + dy * dy <= R2) out.push(k); });
+  return out; }
+function _stkInfo(seq){
+  if (_drivenOnAnEarlierDay(seq)) { var le = state.logs[seq], de = String((le && le.driveDate) || '').slice(5, 10).replace('-', '/');
+    return { k: 'earlier', t: 'Driven earlier' + (de ? ' · ' + de : ''), o: 3, off: true }; }
+  var st = displayStatus(seq), l = state.logs[seq], closed = !!(l && l.closed);
+  if (st === 'pending') return { k: st, t: 'To drive', o: 0 };
+  if (st === 'marked') return { k: st, t: 'Marked driven', o: 0 };
+  if (st === 'complete') return { k: st, t: 'Closed today ✓', o: 2, done: true };
+  var tail = st === 'uploading' ? ' · photos uploading' : st === 'rating' ? ' · rating…' : '';
+  return { k: st, t: (closed ? 'Closed today' : 'Not closed') + tail, o: closed ? 2 : 1, done: closed };
+}
+function _stkOpenAt(key){
+  key = String(key); var c = _stk.of[key]; if (!c || !map) return;
+  var seqs = {}; c.m.forEach(function(k){ seqs[k] = 1; });
+  _stkView = { key: key, x: c.x, y: c.y, z: _stk.z, seqs: Object.keys(seqs) };
+  _stkRender();
+}
+window._stkOpen = _stkOpenAt;   /* harness only */
+function _stkClose(){ _stkView.key = null; var el = $('stklist'); if (el && el.style.display !== 'none') el.style.display = 'none'; }
+function _stkRender(){
+  var V = _stkView; if (!V.key || !map || !state.job) return;
+  if (map.getZoom() !== V.z) { _stkClose(); return; }
+  var sc = Math.pow(2, V.z), keys = {}, seen = {}, seqs = [], rows = [];
+  V.seqs.concat(_stkNear(V.x, V.y, sc)).forEach(function(k){ keys[k] = 1; });
+  Object.keys(keys).forEach(function(k){ (markers[k] ? groupSeqs(k) : [k]).forEach(function(s){ s = String(s); if (!seen[s] && _rowFor(s)) { seen[s] = 1; seqs.push(s); } }); });
+  seqs.forEach(function(s){ var r = _rowFor(s), i = _stkInfo(s); rows.push({ s: s, a: r.street || '(no address)', i: i }); });
+  if (_stkRedeemed.bucket === state.job.bucket) _stkRedeemed.rows.forEach(function(x){ if (seen[x.seq]) return; var p = map.project(x.p, 0), dx = p.x * sc - V.x, dy = p.y * sc - V.y;
+    if (dx * dx + dy * dy <= STK_PX * STK_PX) { seen[x.seq] = 1; rows.push({ s: x.seq, a: x.street || '(no address)', i: { k: 'redeemed', t: 'Redeemed · off the list', o: 4, off: true } }); } });
+  if (rows.length < 2) { _stkClose(); return; }
+  rows.sort(function(a, b){ return (a.i.o - b.i.o) || (parseInt(a.s, 10) - parseInt(b.s, 10)); });
+  var open = rows.filter(function(r){ return r.i.o <= 1; }).length;
+  var html = '<div class="stk-h"><span>' + rows.length + ' parcels here' + (open && open < rows.length ? ' · ' + open + ' to drive' : '') + '</span><button class="stk-x" title="Close (Esc)" aria-label="Close">✕</button></div><div class="stk-b">' +
+    rows.map(function(r){ return '<div class="stk-row' + (r.i.done ? ' done' : '') + (r.i.off ? ' off' : '') + (String(state.currentSeq) === r.s && !r.i.off ? ' on' : '') + '"' + (r.i.off ? '' : ' data-seq="' + esc(r.s) + '"') + ' data-row="' + esc(r.s) + '">' +
+      '<span class="stk-seq ' + r.i.k + '">' + esc(r.s) + '</span><span class="stk-t"><div class="stk-a">' + esc(r.a) + '</div><div class="stk-s">' + esc(r.i.t) + '</div></span></div>'; }).join('') + '</div>';
+  var el = $('stklist');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'stklist'; el.setAttribute('role', 'dialog'); document.body.appendChild(el);
+    el.addEventListener('click', function(e){
+      if (e.target.closest('.stk-x')) { _stkClose(); return; }
+      var row = e.target.closest('.stk-row'); if (!row || !row.getAttribute('data-seq')) return;
+      var s = row.getAttribute('data-seq'); _stkClose(); select(s, { pan: false, from: 'map' });   // exactly a pin tap
+    });
+    map.on('move', function(){ if (_stkView.key) _stkPlace(); });
+    map.on('zoomstart', _stkClose);
+  }
+  if (el._h !== html) { el.innerHTML = html; el._h = html; }
+  if (el.style.display !== 'block') el.style.display = 'block';
+  _stkPlace();
+}
+function _stkPlace(){
+  var el = $('stklist'), V = _stkView, m = markers[V.key]; if (!el || !V.key || !m) return;
+  var mr = map.getContainer().getBoundingClientRect(), A = { l: mr.left, t: mr.top, r: mr.right, b: mr.bottom };
+  if (mr.width < 240 || mr.height < 180) A = { l: 0, t: 0, r: innerWidth, b: innerHeight };   /* no room on the map: use the screen */
+  A = { l: Math.max(A.l, 0), t: Math.max(A.t, 0), r: Math.min(A.r, innerWidth), b: Math.min(A.b, innerHeight) };
+  var w = Math.min(300, A.r - A.l - 16); el.style.width = w + 'px';
+  var body = el.querySelector('.stk-b'); if (body) body.style.maxHeight = Math.max(90, Math.min(330, A.b - A.t - 70)) + 'px';
+  var pt = map.latLngToContainerPoint(m.getLatLng()), ax = mr.left + pt.x, ay = mr.top + pt.y, h = el.offsetHeight;
+  var x = ax + 24; if (x + w > A.r - 8) x = ax - 24 - w;
+  x = Math.max(A.l + 8, Math.min(x, A.r - w - 8));
+  var y = Math.max(A.t + 8, Math.min(ay - 46, A.b - h - 8));
+  el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px';
+}
+document.addEventListener('pointerdown', function(e){ if (_stkView.key && !(e.target.closest && e.target.closest('#stklist'))) _stkClose(); }, true);
+window.addEventListener('keydown', function(e){ if (_stkView.key && e.key === 'Escape') { _stkClose(); e.preventDefault(); e.stopPropagation(); } }, true);
 // ── WHERE TO GO: address of the NEXT parcel + the one the camera is on ───────
 function _addrParts(seq){ var r = _rowFor(seq); return r ? { st: r.street || '(no address)', ct: [r.city, r.zip].filter(Boolean).join(' ') } : null; }
 function renderWhere(){
@@ -3088,8 +3277,10 @@ function _dpToggle(seq){
   var ring = document.createElement('div'); ring.id = 'dpring'; ring.innerHTML = '<svg viewBox="0 0 56 56" width="56" height="56"><circle cx="28" cy="28" r="24"/></svg>'; document.body.appendChild(ring);
   function seqAt(target){
     var row = target.closest && target.closest('#list .row'); if (row) return row.getAttribute('data-seq');
+    /* desk-p52: a row of a stacked spot's list holds like a pin; the stack's own pin does not (it stands for several) */
+    var srow = target.closest && target.closest('#stklist .stk-row'); if (srow) return srow.getAttribute('data-seq');
     var ic = target.closest && target.closest('.leaflet-marker-icon'); if (!ic) return null;
-    for (var k in markers) { var m = markers[k]; if (m && m.getElement && m.getElement() === ic) return k; }
+    for (var k in markers) { var m = markers[k]; if (m && m.getElement && m.getElement() === ic) return ((_stk.n[k] || 0) >= 2 && _stk.rep[k] === k) ? null : k; }
     return null;
   }
   function stop(){ clearTimeout(t); t = null; seq = null; ring.style.display = 'none'; ring.classList.remove('go'); }
@@ -3508,7 +3699,7 @@ function _applyRedeemedNow(v, quiet){
     state.seqs = state.seqs.filter(function(r){
       if (!keys[_normPid(r.parcelId)]) return true;
       if (String(r.seq) === String(_camOpen) || displayStatus(r.seq) !== 'pending') return true;   // worked or open: stays
-      gone++; return false; });
+      gone++; try { _stkRedeemedAdd(r); } catch (e) {} return false; });   /* a stacked spot's list still shows it, as redeemed */
     if (!gone) return;
     indexRows(); if (state.currentSeq && !_rowIdx[String(parseInt(state.currentSeq, 10))]) state.currentSeq = null;
     if (map) buildMarkers(); try { if (link && link.connected) publishMasterSeqs(); } catch (e) {}
@@ -3873,6 +4064,13 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
       try {
         if (kind === 'xlsx') v = (isCur && state.seqs && state.seqs.length) || (await DB.get('kv', 'schedSheet:' + B)) ? 'yes' : 'no';
         else if (kind === 'boundaries' || kind === 'roads' || kind === 'speedlimits') v = (await DB.get('kv', KINDS[i][1] + ':' + B)) ? 'yes' : 'no';
+        else if (window.DeskImagery && DeskImagery.opfs && DeskImagery.opfs().ok) {
+          /* desk-p52: AERIALS INTO CHROME (Dustin 10/28). The background copy into Chrome's own storage reads the whole folder
+             file itself (that is what brings an online-only Dropbox file down), so it is not read twice: its line is the answer,
+             'chrome ✓ 5.16G 1.2ms' when the copy is complete and checked, else 'chrome 1.20/5.16G waits for idle' and the like. */
+          v = DeskImagery.opfsLine(B, kind) || 'chrome: not checked yet';
+          if (/^chrome ✓/.test(v)) v = 'yes · ' + v;
+        }
         else {
           var rec = await DB.get('kv', kind + ':' + B);
           if (rec && rec.blob) v = 'yes';
@@ -3900,8 +4098,14 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     R.busy = false;
   }
   // compact for the screen report: { OH_STARK: { xlsx: 'yes', imagery: 'paused 40%', ... }, next: 'OH_CLARK', at: '6:05 PM' }
-  window.__offReadyReport = function(){ try { if (!R.at) return null; var o = {}; Object.keys(R.by).forEach(function(b){ o[b] = R.by[b]; });
-    o.next = R.next; o.at = new Date(R.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); return o; } catch (e) { return null; } };
+  window.__offReadyReport = function(){ try { if (!R.at) return null; var o = {}, op = !!(window.DeskImagery && DeskImagery.opfs && DeskImagery.opfs().ok);
+    Object.keys(R.by).forEach(function(b){ o[b] = R.by[b];
+      /* desk-p52: the Chrome copy moves between the 10-min checks: its lines are read fresh for every 30-s report */
+      if (op) { o[b] = Object.assign({}, R.by[b]); ['imagery', 'streets'].forEach(function(k){ var v = DeskImagery.opfsLine(b, k) || 'chrome: not checked yet'; o[b][k] = /^chrome ✓/.test(v) ? 'yes · ' + v : v; }); } });
+    o.next = R.next; o.at = new Date(R.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    /* desk-p52: Chrome's storage (persisted? used of allowed) rides along */
+    try { if (window.DeskImagery && DeskImagery.storeLine) o.chrome = String(DeskImagery.storeLine()).slice(0, 90); } catch (e) {}
+    return o; } catch (e) { return null; } };
   window.__offReadyRun = run;
   if (/[?&]offtest=1/.test(location.search)) window.__offReadyReadAll = readAll;   /* harness only */
   setTimeout(run, 90000); setInterval(run, 10 * 60e3);
