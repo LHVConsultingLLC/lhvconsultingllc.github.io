@@ -925,7 +925,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p52';
+var DESK_BUILD = 'desk-p53';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1417,8 +1417,8 @@ function wireListeners(){
     _serverLogs = keep; rebuildLogs(); applyPhotoCounts(); cacheSnapshots(); renderAll();
   });
   link.on('photoCountsJob', function(v){ _photoCountsJob = v || ''; applyPhotoCounts(); renderAll(); });
-  link.on('photoCounts', function(v){ _photoCountsRaw = v || {}; applyPhotoCounts(); cacheSnapshots(); renderAll(); });
-  link.on('sync', function(v){ _camSync = v || { pending: 0, parked: 0, at: 0 }; cacheSnapshots(); renderAll(); });
+  link.on('photoCounts', function(v){ _camLine.seen.photoCounts = JSON.stringify(v || {}); _photoCountsRaw = v || {}; applyPhotoCounts(); cacheSnapshots(); renderAll(); });
+  link.on('sync', function(v){ _camLine.seen.sync = JSON.stringify(v || null); _camSync = v || { pending: 0, parked: 0, at: 0 }; cacheSnapshots(); renderAll(); });
   // GO LIVE FROM THE SERVER (Dustin 10/24: "His laptop link should fully go live as soon as he hits ship"): a practice
   // tab (?look=1, sticky) turns itself into the live desk the moment the server marks the driver live
   // (sessions/<DRIVER>/deskLive). Same tab, same key, no new link to open.
@@ -1429,19 +1429,178 @@ function wireListeners(){
     try { var u = new URL(location.href); u.searchParams.delete('look'); location.replace(u.toString()); } catch (e) { location.reload(); }
   });
   link.on('shipped', function(v){ _shippedSeqs = v || {}; rebuildLogs(); cacheSnapshots(); renderAll(); });
-  link.on('active', function(v){
-    if (v && v.seq) { var s = String(v.seq), changed = s !== _cameraSeq; _cameraSeq = s; _camOpen = s; _camStartedDay = _todayKey();
-      if (changed && _followCam) select(s, { pan: true, from: 'camera' }); }
-    else { _camOpen = null; _cameraSeq = null; }   // STOP closed it or a scratch dropped it (10/18): the top chip falls back to the selected parcel
-    if (!_camOpen) { try { if (_autoSheet && _autoSheet.pending) setTimeout(deskAutoSheetApply, 1500); } catch (e) {} }   // desk-p40: a waiting sheet loads at STOP
-    if (!_camOpen) { try { if (window._deskReloadWhenIdle && window.__deskWantReload) window._deskReloadWhenIdle(window.__deskWantReload, 'stop'); } catch (e) {} }
-    renderAll();
-  });
+  /* desk-p53: the camera's seq can also arrive on the camera line (see _camActiveIn below); one handler for both */
+  link.on('active', function(v){ _camActiveIn(v, 'sdk'); });
   link.on('hbCam', function(v){ if (v && v !== _camHbLast) { _camHbLast = v; _camHbSeenAt = Date.now(); _hbHeardAt = Date.now(); _lsnW.n = 0; renderLink(); } });
   wireJobDriven();
+  _camLineStart();
   // The desk takes over the field-log phone's two background duties toward the camera:
   setInterval(function(){ if (link.connected) link.update('', { hbRec: Date.now() }).catch(function(){}); }, 5000);
 }
+// ── THE CAMERA LINE (desk-p53, MT 10/29 11:22 AM) ────────────────────────────────────────────────────────────────────
+// Mike: "the lock is not moving to the new seq to show me the address". The laptop's screen report showed every Firebase
+// listener silent from 11:22:02 (heardS 1005 at 11:38:47, still 1125 at 11:40:47) while its writes landed and the 30-s
+// ping answered; the p51 self-repair re-attached 10 times and rebuilt the socket 8 times without bringing them back.
+// The ping carried closes but never the camera's seq, so the map said CAMERA 247 (the last lock heard, 11:21:55) through
+// 313, 250, 450, 354 and 444. The camera publishes 'active' the instant it locks; nothing waits on a close or a photo.
+// The laptop now hears the camera's seq on a second, separate line that does not share the stalled socket:
+//   1. a server-sent stream of sessions/<D>/active (+ sync, photoCounts), its own HTTPS connection, push, ~100 bytes;
+//   2. while the main listeners are silent, a 4-s fetch of active.json (32 bytes) as well;
+//   3. when the camera moves off a parcel and its close is not here 2.5 s later, the ping is sent at once (closes, ratings).
+// Whichever path hears a change first applies it; a path that lags never rolls the seq back (history check), and every
+// 2 s the healthy paths are reconciled. Nothing for the driver; the voice lock and STOP rules are unchanged.
+var _CAM_DB = 'https://lhv-field-log-default-rtdb.firebaseio.com';
+var _camLine = { started: false, seen: {}, hist: [], ch: {}, appliedAt: 0, es: {}, esAt: {}, esOpen: {}, val: {}, reopenAt: {},
+  opens: 0, errs: 0, polls: 0, pollErr: 0, pollBusy: false, pollAt: 0, via: { sdk: 0, line: 0, poll: 0, fix: 0 }, lag: [], arr: {}, arrKeys: [],
+  forced: 0, lastForce: 0 };
+function _camKey(v){ if (!v) return 'N'; if (v.seq) return 'L' + v.seq + '@' + (v.ts || ''); if (v.scratched) return 'S' + v.scratched + '@' + (v.ts || ''); return 'O' + JSON.stringify(v).slice(0, 60); }
+function _sdkHeardAgo(){ var t = 0; try { ((link && link._subs) || []).forEach(function(s){ if (!s.dead && s.heardAt > t) t = s.heardAt; }); } catch (e) {} return t ? Date.now() - t : Infinity; }
+function _camActiveIn(v, via, sentAt){
+  var L = _camLine, k = _camKey(v), H = L.hist, cur = H.length ? H[H.length - 1] : null, now = Date.now();
+  /* when each path first heard each value (the harness and the screen report read this) */
+  if (!L.arr[k]) { L.arr[k] = {}; L.arrKeys.push(k); if (L.arrKeys.length > 12) delete L.arr[L.arrKeys.shift()]; }
+  if (!L.arr[k][via]) L.arr[k][via] = now;
+  /* a poll that left before the last change is old news */
+  if (sentAt && sentAt < L.appliedAt) return;
+  var prev = L.ch[via]; L.ch[via] = { k: k, v: v, at: now };
+  if (k === cur) return;
+  /* a lock or a scratch carries the camera's own time: once applied it is never applied again (a lagging path) */
+  if (k.charAt(0) !== 'N' && H.indexOf(k) >= 0) return;
+  /* "no parcel open" from a path whose last word is already followed by a newer close in the history = it lags */
+  if (k === 'N' && prev) { var i = H.lastIndexOf(prev.k); if (i >= 0 && H.indexOf('N', i + 1) > i) return; }
+  _camApply(v, via, k);
+}
+function _camApply(v, via, k){
+  var L = _camLine, before = _camOpen;
+  L.hist.push(k); if (L.hist.length > 40) L.hist.shift();
+  L.appliedAt = Date.now(); L.via[via] = (L.via[via] || 0) + 1;
+  if (v && v.seq && v.ts) { L.lag.push([String(v.seq), Date.now() - Number(v.ts), via]); if (L.lag.length > 8) L.lag.shift(); }
+  if (v && v.seq) { var s = String(v.seq), changed = s !== _cameraSeq; _cameraSeq = s; _camOpen = s; _camStartedDay = _todayKey();
+    if (changed && _followCam) { try { select(s, { pan: true, from: 'camera' }); } catch (e) { console.warn('camera select', e); } } }
+  /* STOP closed it or a scratch dropped it (10/18): the top chip falls back to the selected parcel */
+  else { _camOpen = null; _cameraSeq = null; }
+  /* desk-p40: a waiting sheet loads at STOP */
+  if (!_camOpen) { try { if (_autoSheet && _autoSheet.pending) setTimeout(deskAutoSheetApply, 1500); } catch (e) {} }
+  if (!_camOpen) { try { if (window._deskReloadWhenIdle && window.__deskWantReload) window._deskReloadWhenIdle(window.__deskWantReload, 'stop'); } catch (e) {} }
+  if (before && String(before) !== String(_camOpen || '')) _camCloseWatch(String(before));
+  renderAll();
+}
+// The camera left a parcel. Its close is written BEFORE the camera clears its seq, so on a live link it is already here.
+// If it is not (listeners stalled), ask the server now instead of waiting up to a minute for the 30-s ping.
+function _camCloseWatch(seq){
+  [2500, 9000, 25000].forEach(function(ms){ setTimeout(function(){
+    try { var l = _serverLogs[seq]; if (l && l.closed) return; if (_rawClosed[seq]) return; _camForcePing('left ' + seq); } catch (e) {}
+  }, ms); });
+}
+function _camForcePing(why){
+  var L = _camLine; if (!window.__deskPing || (LOOK && Q.get('livetest') !== '1')) return;
+  if (Date.now() - L.lastForce < 4000) return;
+  L.lastForce = Date.now(); L.forced++;
+  try { _lsnW.knownAt = 0; window.__deskPing('screen', { screen: window.__deskScreen ? window.__deskScreen() : null }); } catch (e) {}
+}
+function _camLineMerge(path, kind, d){
+  var L = _camLine, cur = L.val[path], p = String(d.path || '/');
+  if (p === '/') cur = kind === 'put' ? d.data : Object.assign({}, (cur && typeof cur === 'object') ? cur : {}, d.data || {});
+  else {
+    var keys = p.split('/').filter(Boolean); cur = JSON.parse(JSON.stringify((cur && typeof cur === 'object') ? cur : {}));
+    var o = cur; for (var i = 0; i < keys.length - 1; i++) { if (!o[keys[i]] || typeof o[keys[i]] !== 'object') o[keys[i]] = {}; o = o[keys[i]]; }
+    var last = keys[keys.length - 1];
+    if (kind === 'put') { if (d.data === null) delete o[last]; else o[last] = d.data; }
+    else o[last] = Object.assign({}, (o[last] && typeof o[last] === 'object') ? o[last] : {}, d.data || {});
+  }
+  if (cur && typeof cur === 'object' && !Object.keys(cur).length) cur = null;
+  L.val[path] = cur; return cur;
+}
+function _camLineIn(path, v){
+  if (path === 'active') return _camActiveIn(v, 'line');
+  /* sync + photoCounts: only while the main listeners are silent (otherwise they already have it) */
+  var j = JSON.stringify(v || (path === 'sync' ? null : {}));
+  if (_sdkHeardAgo() < 10000 || j === _camLine.seen[path]) return;
+  _camLine.seen[path] = j;
+  if (path === 'sync') { _camSync = v || { pending: 0, parked: 0, at: 0 }; cacheSnapshots(); renderAll(); }
+  else if (path === 'photoCounts') { _photoCountsRaw = v || {}; applyPhotoCounts(); cacheSnapshots(); renderAll(); }
+}
+function _camLineOpen(path){
+  var L = _camLine; if (MOCK || !window.EventSource || !DRIVER || !window.firebase || !firebase.auth) return;
+  try { if (L.es[path]) L.es[path].close(); } catch (e) {}
+  L.es[path] = null; L.esOpen[path] = false; L.reopenAt[path] = Date.now();
+  var u = firebase.auth().currentUser; if (!u) return;
+  u.getIdToken().then(function(tok){
+    var es = new EventSource(_CAM_DB + '/sessions/' + DRIVER + '/' + path + '.json?auth=' + encodeURIComponent(tok));
+    L.es[path] = es; L.esAt[path] = Date.now(); L.opens++;
+    var mine = function(){ return L.es[path] === es; };
+    es.onopen = function(){ if (mine()) { L.esOpen[path] = true; L.esAt[path] = Date.now(); } };
+    var data = function(kind){ return function(ev){ if (!mine()) return; L.esAt[path] = Date.now(); L.esOpen[path] = true;
+      var d = null; try { d = JSON.parse(ev.data); } catch (e) { return; } if (!d) return;
+      try { _camLineIn(path, _camLineMerge(path, kind, d)); } catch (e) { console.warn('camera line', e); } }; };
+    es.addEventListener('put', data('put')); es.addEventListener('patch', data('patch'));
+    es.addEventListener('keep-alive', function(){ if (mine()) L.esAt[path] = Date.now(); });
+    /* the key ran out or the server dropped the stream: open it again with a fresh key */
+    var again = function(){ if (!mine()) return; L.esOpen[path] = false; setTimeout(function(){ if (mine()) _camLineOpen(path); }, 1000); };
+    es.addEventListener('auth_revoked', again); es.addEventListener('cancel', again);
+    es.onerror = function(){ if (mine()) { L.esOpen[path] = false; L.errs++; } };
+  }).catch(function(){ L.errs++; });
+}
+function _camPoll(){
+  var L = _camLine; if (L.pollBusy || MOCK || !DRIVER || !window.firebase || !firebase.auth) return;
+  var u = firebase.auth().currentUser; if (!u) return;
+  L.pollBusy = true; var t0 = Date.now();
+  u.getIdToken().then(function(tok){
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, 8000);
+    return fetch(_CAM_DB + '/sessions/' + DRIVER + '/active.json?auth=' + encodeURIComponent(tok), { cache: 'no-store', signal: ac ? ac.signal : undefined })
+      .then(function(r){ clearTimeout(tm); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }).then(function(v){ L.polls++; L.pollAt = Date.now(); _camActiveIn(v, 'poll', t0); }, function(){ L.pollErr++; })
+    .then(function(){ L.pollBusy = false; });
+}
+/* every 2 s: the paths that are healthy right now agree on a value the map is not showing = show it */
+function _camReconcile(){
+  var L = _camLine, now = Date.now(), cur = L.hist.length ? L.hist[L.hist.length - 1] : null, ch = [];
+  if (L.ch.sdk && _sdkHeardAgo() < 15000) ch.push(L.ch.sdk);
+  if (L.ch.line && L.esOpen.active && now - (L.esAt.active || 0) < 75000) ch.push(L.ch.line);
+  if (L.ch.poll && now - L.pollAt < 10000) ch.push(L.ch.poll);
+  if (!ch.length) return;
+  for (var i = 1; i < ch.length; i++) if (ch[i].k !== ch[0].k) return;
+  if (ch[0].k === cur) return;
+  for (var j = 0; j < ch.length; j++) if (now - ch[j].at < 3000) return;
+  _camApply(ch[0].v, 'fix', ch[0].k);
+}
+function _camLineStart(){
+  var L = _camLine; if (L.started || MOCK) return; L.started = true;
+  /* signal back: open the streams again and ask at once (a stream cut by the drop says nothing) */
+  window.addEventListener('online', function(){ setTimeout(function(){ try { L.pollAt = 0; ['active', 'sync', 'photoCounts'].forEach(function(p){ _camLineOpen(p); }); _camPoll(); } catch (e) {} }, 1500); });
+  setInterval(function(){
+    try {
+      if (!window.firebase || !firebase.auth || !firebase.auth().currentUser || navigator.onLine === false) return;
+      var now = Date.now();
+      ['active', 'sync', 'photoCounts'].forEach(function(p){
+        var es = L.es[p], age = now - (L.esAt[p] || 0);
+        /* never opened, closed for good, or silent past two keep-alives: open it again (not more than every 15 s) */
+        if ((!es || es.readyState === 2 || age > 75000) && now - (L.reopenAt[p] || 0) > 15000) _camLineOpen(p);
+      });
+      /* the main listeners are silent (10 s): fetch the camera's seq every 4 s as well. A stream can die without a word
+         on a hotspot; a 32-byte fetch is the same kind of request as the 30-s ping that kept working on 10/29. */
+      if (_sdkHeardAgo() > 10000 && now - L.pollAt > 3500) _camPoll();
+      _camReconcile();
+    } catch (e) {}
+  }, 2000);
+}
+/* desk-p53: the open parcel this laptop holds is stale = the main listeners have been silent 3+ min AND the server, read
+   just now on the camera line or the fetch, says no parcel is open. Then an update or the office reload is not held. */
+window._camOpenStale = function(){
+  var L = _camLine, now = Date.now();
+  if (MOCK || !L.started || !link || !link.ready) return false;
+  var lim = 180000; try { if (Q.get('livetest') === '1' && Number(Q.get('stalems')) > 0) lim = Number(Q.get('stalems')); } catch (e) {}
+  if (_sdkHeardAgo() < lim) return false;
+  var noSeq = function(c){ return !!c && !(c.v && c.v.seq); };
+  if (L.esOpen.active && now - (L.esAt.active || 0) < 75000 && noSeq(L.ch.line)) return true;
+  if (L.pollAt && now - L.pollAt < 60000 && noSeq(L.ch.poll)) return true;
+  return false;
+};
+window.__camLineReport = function(){
+  try { var L = _camLine, now = Date.now(), ws = null; try { ws = localStorage.getItem('firebase:previous_websocket_failure'); } catch (e) {}
+    return { via: L.via, lag: L.lag.slice(-5), es: L.esOpen.active ? 1 : 0, esS: L.esAt.active ? Math.round((now - L.esAt.active) / 1000) : null,
+      opens: L.opens, errs: L.errs, polls: L.polls, pErr: L.pollErr, forced: L.forced, sdkS: isFinite(_sdkHeardAgo()) ? Math.round(_sdkHeardAgo() / 1000) : null, wsFail: ws }; } catch (e) { return null; }
+};
 var _publishedFor = null;
 // The re-drive guard: jobDriven/<jobKey> is merged server-side from every driver (same node the phone reads)
 var _jdPath = null;
@@ -1481,10 +1640,19 @@ window.__deskPingExtra = function(stage){
   var o = {};
   try { var k = localStorage.getItem('lhv_driver_key'); if (k) o.key = k; } catch (e) {}
   try { if (state.job && state.job.bucket && link && Date.now() - _lsnW.knownAt > 25000) { _lsnW.knownAt = Date.now();
-    var kn = {}; Object.keys(_rawClosed).forEach(function(x){ kn[x] = 1; }); Object.keys(_serverLogs || {}).forEach(function(x){ if (_serverLogs[x] && _serverLogs[x].closed) kn[x] = 1; });
+    /* desk-p53: a close counts as known only once it is rated here, so a stalled listener's missing rating comes by the ping too */
+    var kn = {}; Object.keys(_rawClosed).forEach(function(x){ var l = (_serverLogs || {})[x]; if (!l || _pingSettled(l)) kn[x] = 1; });
+    Object.keys(_serverLogs || {}).forEach(function(x){ if (_serverLogs[x] && _serverLogs[x].closed && _pingSettled(_serverLogs[x])) kn[x] = 1; });
     o.known = Object.keys(kn).join(','); } } catch (e) {}
   return o;
 };
+function _pingSettled(l){
+  if (!l || !l.closed) return false;
+  if (l.build !== undefined && l.build !== null && String(l.build) !== '') return true;
+  var a = l.aiAssess; if (a && a.ok !== false && (a.rating != null || a.nvfr)) return true;
+  try { if (_aiGaveUp(l) || _effNoPhotos(l)) return true; } catch (e) {}
+  return false;
+}
 window.__deskPingReply = function(j){
   try {
     if (!j || !j.ok) return;
@@ -1496,7 +1664,11 @@ window.__deskPingReply = function(j){
     if (j.logs && typeof j.logs === 'object' && state.job) {
       var n = 0, old = 0;
       Object.keys(j.logs).forEach(function(k){ var l = j.logs[k]; if (!l || !l.closed) return; _rawClosed[k] = 1;
-        if (_isForeignLog(k, l) || (_serverLogs[k] && _serverLogs[k].closed)) return;
+        if (_isForeignLog(k, l)) return;
+        if (_serverLogs[k] && _serverLogs[k].closed) {
+          /* desk-p53: already closed here; take the server's copy only when it brings the rating this one lacks */
+          if (!_pingSettled(_serverLogs[k]) && _pingSettled(l)) { _serverLogs[k] = l; n++; }
+          return; }
         _serverLogs[k] = l; n++; if (Date.now() - Number(l.closedAt || 0) > 60000) old++; });
       if (n) { _lsnW.closesIn += n; if (old) _lsnW.missed += old;
         if (link && link._lsnLog) link._lsnLog('closes-from-server', { why: n + ' close(s)' });
@@ -3556,7 +3728,9 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
   if (MOCK && !/[?&]updtest=1/.test(location.search)) return;   // the harness turns it on in the mock (S6)
   var _waitUntil = 0, _pending = false;
   function idle(){ try {
-    if (_camOpen) return false;
+    /* desk-p53: an open parcel this laptop can no longer confirm (every path to the server silent for 5 min) does not
+       hold an update forever. MT 10/29: a dead listener left "247 open" from 11:22 and the office reload never ran. */
+    if (_camOpen && !(window._camOpenStale && window._camOpenStale())) return false;
     if (_modalResolve) return false;                                    // a box is open (e.g. "Ship N parcels?") — audit #5
     var _sb = $('ship-btn'); if (_sb && _sb.disabled) return false;      // a SHIP is in flight
     var rs = $('route-slot'); if (rs && rs.style.display !== 'none') return false;
@@ -4161,8 +4335,11 @@ window.__micDiag = async function(){
       lsn: (function(){ try { var L = (window.link && link._lsn) || {}, W = window._lsnW || {}; var hb = window._hbHeardAt ? Math.round((Date.now() - window._hbHeardAt) / 1000) : null;
         return { heardS: hb, c: L.cancels || 0, r: L.reattach || 0, k: L.kicks || 0, last: String(L.last || '').slice(0, 70), srvHbS: W.srvHbAge != null ? Math.round(W.srvHbAge / 1000) : null, closesIn: W.closesIn || 0, cmdIn: W.cmdIn || 0, askIn: W.askIn || 0 }; } catch (e) { return null; } })(),
       shipQ: window._shipQ ? { at: window._shipQ.at, n: window._shipQ.n, why: String(window._shipQWhy || '').slice(0, 60) } : null,
-      offlineReady: window.__offReadyReport ? window.__offReadyReport() : null };
+      offlineReady: window.__offReadyReport ? window.__offReadyReport() : null,
+      /* desk-p53: the camera line (which path brought the camera's seq, how long after the lock, stream + fetch health) */
+      cam: window.__camLineReport ? window.__camLineReport() : null };
   } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
+  window.__deskScreen = function(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} return sc; };
   function tick(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
   setTimeout(tick, 5000); setInterval(tick, 30000);
 })();
