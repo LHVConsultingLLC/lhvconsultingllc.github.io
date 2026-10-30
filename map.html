@@ -7,6 +7,7 @@
    server (works even when the live connection is half-dead). */
 (function(){
   var U = 'https://us-central1-lhv-field-log.cloudfunctions.net/deskPing';
+  var U2 = 'https://deskping-b556olotwq-uc.a.run.app/';   /* desk-p56: the same function's own Cloud Run address */
   var drv = ''; try { drv = (new URLSearchParams(location.search).get('as') || localStorage.getItem('fieldlog_driver_id') || '').toUpperCase(); } catch (e) {}
   // a look-only page or an office test (?look=1 / ?as=) never reports as a driver (full audit 10/27 night #1)
   var _quiet = /[?&](look=1|as=)/.test(location.search); try { if (sessionStorage.getItem('lhv_look') === '1' && !/[?&]look=0/.test(location.search)) _quiet = true; } catch (e) {}
@@ -22,10 +23,17 @@
     /* desk-p51: a fetch, so the answer can carry what the listeners should have delivered (office command, Ask Claude
        answer, the camera's check-in, closes not heard). The beacon is only the fallback when the fetch fails. */
     if (!window.fetch) { beacon(); return; }
-    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, 20000);
-    fetch(U, { method: 'POST', body: body, keepalive: body.length < 60000, signal: ac ? ac.signal : undefined })
-      .then(function(r){ clearTimeout(tm); return r.status === 200 ? r.json() : null; })
-      .then(function(j){ if (j && j.ok && window.__deskPingReply) window.__deskPingReply(j); }, function(){ clearTimeout(tm); beacon(); }); } catch (e) {} };
+    /* desk-p56 (MT 10/30 12:24-12:34 PM: not one ping reached the office for 10 min while the camera line worked):
+       no keepalive (those share a 64 KB in-flight allowance with the beacon, and hung ones held it), a 12-s limit, and
+       a failed ping goes again at once to the same office function's second address (another host = a fresh
+       connection, never the stuck one). The beacon is the last resort, at most once a minute. */
+    var P = window.__pingStat || (window.__pingStat = { ok: 0, fail: 0, alt: 0, beacon: 0, bAt: 0, useAlt: false });
+    var send = function(url, isAlt){ var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, 12000);
+      return fetch(url, { method: 'POST', body: body, signal: ac ? ac.signal : undefined }).then(function(r){ clearTimeout(tm); if (!r.ok) throw new Error('HTTP ' + r.status); if (isAlt) P.alt++; P.ok++; return r.status === 200 ? r.json() : null; }, function(e){ clearTimeout(tm); throw e; }); };
+    var first = P.useAlt ? U2 : U, second = P.useAlt ? U : U2;
+    send(first, P.useAlt).then(null, function(){ P.fail++; P.useAlt = !P.useAlt; return send(second, P.useAlt); })
+      .then(function(j){ if (j && j.ok && window.__deskPingReply) window.__deskPingReply(j); },
+        function(){ P.fail++; if (Date.now() - P.bAt > 60000) { P.bAt = Date.now(); P.beacon++; beacon(); } }); } catch (e) {} };
   /* WHY THE MAP STARTED (desk-p51, MT 10/28 4:15 PM): the browser's own reason (reload / navigate / back_forward), whether
      Chrome had thrown the tab away (wasDiscarded), the reason the desk gave for a reload of its own, and the last note
      that was on screen before the page went away. */
@@ -925,7 +933,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p54';
+var DESK_BUILD = 'desk-p56';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1240,6 +1248,8 @@ function FirebaseLink(){
         setInterval(function(){
           var _gap = Date.now() - _tick; _tick = Date.now();
           if (_gap > 75000) { _rtAt = Date.now(); }   // the laptop was asleep: a fresh check first, not a "dead link" (audit #7)
+          /* desk-p56: the live connection is down but plain HTTPS works = the beat goes over HTTPS (the office sees the laptop) */
+          if (self.ready && !self.connected && !LOOK && self.restMode()) restWrite('PUT', 'deskBeat', { at: Date.now(), build: DESK_BUILD, via: 'https' }).catch(function(){});
           if (!self.ready || !_sock) return;
           if (LOOK && Q.get('livetest') !== '1') {   // look-only: a READ proves the link (nothing written in a driver's session) — audit r5
             sess.child('deskBeat').get().then(function(){ _rtAt = Date.now(); _kicks = 0; _setConn(); }, function(){ _rtAt = Date.now(); _setConn(); });   // a path NOTHING listens to: a real round trip (a listened path answers from memory — audit r6)
@@ -1255,6 +1265,47 @@ function FirebaseLink(){
             _rtAt = Date.now() - 30000;   // give the new socket a minute before the next kick
           }
         }, 30000);
+        /* ── THE LIVE CONNECTION HEALS ITSELF WHILE HTTPS WORKS (desk-p56, MT 10/30 11:56 AM-12:36 PM) ──
+           The live connection said "not connected" for 40 min while plain HTTPS to the same servers worked. The old
+           repair only ran while the connection still claimed to be up, and the library's own retries back off to one
+           try every 5 min, so for 40 min almost nothing was tried. Now, with HTTPS working:
+           - DOWN (no round trip) 1 min = the live connection is torn down and opened fresh, every 2 min. The fresh tries
+             alternate between starting on plain HTTPS (long-poll, then upgrade) and a websocket straight away.
+           - DEAF (round trips fine, but nothing heard for 2 min while the camera is checking in, the 10/29 state) = the
+             existing listener repair (_lsnWatch) keeps re-attaching; its socket rebuilds use the same fresh tries.
+           - Either one still there after 6 min = the page reloads at the next idle moment (after a STOP), starting on
+             plain HTTPS, at most once per 30 min and 3 times a day. A stale open parcel never holds it (_camOpenStale).
+           The desk keeps working over HTTPS the whole time; the driver sees nothing and does nothing. */
+        var _heal = self._heal = { downSince: 0, mode: '', kicks: 0, lastKick: 0, asked: 0, upAgain: 0 };
+        var SDK_KICK_MS = 60000, SDK_RELOAD_MS = 6 * 60000;
+        try { if (Q.get('livetest') === '1' && Number(Q.get('healms')) > 0) { SDK_KICK_MS = Number(Q.get('healms')); SDK_RELOAD_MS = Number(Q.get('healreloadms')) > 0 ? Number(Q.get('healreloadms')) : Number(Q.get('healms')) * 3; } } catch (e) {}
+        var _healLim = function(){ try { var d = new Date().toLocaleDateString('en-CA'), a = JSON.parse(localStorage.getItem('desk_sdkheal') || '[]').filter(function(x){ return new Date(x).toLocaleDateString('en-CA') === d; });
+          return { a: a, ok: a.length < 3 && (!a.length || Date.now() - a[a.length - 1] > 30 * 60000) }; } catch (e) { return { a: [], ok: false }; } };
+        setInterval(function(){
+          try {
+            if (!self.ready || !db || MOCK) return;
+            var now = Date.now(), deaf = self.connected && _sdkDeaf(now);
+            if (self.connected && !deaf) { if (_heal.downSince) { _heal.upAgain++; lsnLog('sdk-back', { why: _heal.mode + ' ' + Math.round((now - _heal.downSince) / 1000) + ' s' }); }
+              _heal.downSince = 0; _heal.mode = ''; if (_heal.asked && window._deskReloadCancel) window._deskReloadCancel('live connection'); _heal.asked = 0; return; }
+            /* no HTTPS either = the network itself is down: nothing to heal, the offline banner covers it */
+            if (!_httpsUp(now)) { _heal.downSince = 0; _heal.mode = ''; return; }
+            var mode = deaf ? 'deaf' : 'down';
+            if (!_heal.downSince || _heal.mode !== mode) { _heal.downSince = now; _heal.mode = mode; return; }
+            var down = now - _heal.downSince;
+            if (mode === 'down' && down >= SDK_KICK_MS && now - _heal.lastKick >= Math.max(SDK_KICK_MS, 120000) - 1000) {
+              _heal.kicks++; _heal.lastKick = now; self.reconnects = (self.reconnects || 0) + 1;
+              _fresh('down ' + Math.round(down / 1000) + ' s, https ok');
+            }
+            if (down >= SDK_RELOAD_MS && !_heal.asked && window._deskReloadWhenIdle && !LOOK) {
+              var lim = _healLim(); if (!lim.ok) return;
+              _heal.asked = now; lim.a.push(now); try { localStorage.setItem('desk_sdkheal', JSON.stringify(lim.a)); } catch (e) {}
+              /* the reloaded page starts its live connection on plain HTTPS (long-poll), the path that works */
+              try { localStorage.setItem('firebase:previous_websocket_failure', 'true'); } catch (e) {}
+              lsnLog('sdk-reload-asked', { why: mode + ' ' + Math.round(down / 1000) + ' s' });
+              window._deskReloadWhenIdle('live connection', 'sdk');
+            }
+          } catch (e) {}
+        }, 5000);
         firebase.auth().onAuthStateChanged(function(user){
           // A NEW KEY LINK WINS (10/20, Pablo's work computer): a computer already signed in as another driver
           // (driver_DS) kept that sign-in when opened with Pablo's key — only an empty sign-in ever used the key.
@@ -1280,6 +1331,45 @@ function FirebaseLink(){
   }
   function ref(p){ if (!p) return sess; return p.charAt(0) === '/' ? db.ref(p.slice(1)) : sess.child(p); }
   function whenReady(f){ if (self.ready) f(); else readyQ.push(f); }
+  // ── HTTPS WRITES WHEN THE LIVE CONNECTION IS DOWN (desk-p56, MT 10/30 11:56 AM-12:36 PM) ── the laptop's beat,
+  // position, taps and check-ins stopped for 40 min because every write waited on the live connection, while plain
+  // HTTPS to the same server worked the whole time. Now, while the live connection is down and HTTPS answers, each
+  // write goes straight to the server over HTTPS (same sign-in, same rules), and only there (no copy left waiting in
+  // the live connection to land late on top of a newer value).
+  var _rest = self._rest = { okAt: 0, failAt: 0, w: 0, f: 0, r: 0, err: '' };
+  self.restMode = function(){ try { return !!(self.ready && db && !self.connected && !MOCK && _httpsUp(Date.now())); } catch (e) { return false; } };
+  function restUrl(p){ var base = 'sessions/' + (sess ? sess.key : DRIVER);
+    var full = !p ? base : (p.charAt(0) === '/' ? p.slice(1) : base + '/' + p);
+    return 'https://lhv-field-log-default-rtdb.firebaseio.com/' + full.split('/').filter(Boolean).map(encodeURIComponent).join('/') + '.json'; }
+  /* desk-p56: the database's HTTPS address speaks HTTP/1.1, so Chrome opens at most 6 connections to it and the camera
+     line's 3 streams hold half of them. HTTPS reads and writes therefore go 2 at a time, writes first; a request's
+     12-s limit starts when it is sent, never while it waits its turn (harness 10/30: 12 log reads at once starved the beat). */
+  var _rq = [], _rqN = 0;
+  function _rqPump(){
+    while (_rqN < 2 && _rq.length) { (function(j){ _rqN++;
+      _restSend(j.m, j.p, j.v).then(function(x){ _rqN--; j.res(x); _rqPump(); }, function(e){ _rqN--; j.rej(e); _rqPump(); }); })(_rq.shift()); }
+  }
+  function restWrite(method, p, val){
+    return new Promise(function(res, rej){
+      var j = { m: method, p: p, v: val, res: res, rej: rej };
+      if (method === 'GET') { if (_rq.length >= 24) { rej(new Error('queue full')); return; } _rq.push(j); }
+      else { var i = 0; while (i < _rq.length && _rq[i].m !== 'GET') i++; _rq.splice(i, 0, j); }
+      _rqPump();
+    });
+  }
+  function _restSend(method, p, val){
+    var u = window.firebase && firebase.auth && firebase.auth().currentUser;
+    if (!u) return Promise.reject(new Error('not signed in'));
+    return u.getIdToken().then(function(tok){
+      var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, 12000);
+      var o = { method: method, cache: 'no-store', signal: ac ? ac.signal : undefined };
+      if (method !== 'GET') { o.body = JSON.stringify(val === undefined ? null : val); o.headers = { 'Content-Type': 'application/json' }; }
+      return fetch(restUrl(p) + '?auth=' + encodeURIComponent(tok), o).then(function(r){ clearTimeout(tm);
+        if (!r.ok) throw new Error('HTTP ' + r.status); return method === 'GET' ? r.json() : null; }, function(e){ clearTimeout(tm); throw e; });
+    }).then(function(v){ _rest.okAt = Date.now(); if (method === 'GET') _rest.r++; else _rest.w++; return v; },
+      function(e){ _rest.failAt = Date.now(); _rest.f++; _rest.err = String((e && (e.name === 'AbortError' ? 'timeout' : e.message)) || e).slice(0, 40); throw e; });
+  }
+  self.restWrite = restWrite;
   // ── LISTENERS THAT STAY ALIVE (desk-p51, MT 10/28 9:16 AM, 4:04-4:15 PM, 4:53-5:08 PM: the laptop's writes kept
   // working, deskBeat every 30 s, while every listener went silent: the camera unheard for 15 min, the office reload and
   // the Ask Claude answer never arrived). Every listener carries a cancel callback: a refused listener (sign-in lapsed
@@ -1322,9 +1412,21 @@ function FirebaseLink(){
     self._subs.forEach(function(sub){ try { if (sub.ref && sub.cb) sub.ref.off('value', sub.cb); } catch (e) {} });
     self._subs.forEach(function(sub){ try { if (!sub.gone) attach(sub); } catch (e) {} });
   };
+  /* desk-p56: a FRESH live connection. goOffline/goOnline drops the old one and connects again at once (the library's
+     own retries had backed off to one every 5 min). The library picks its way in from a note it keeps in this
+     laptop's storage ("websockets failed"): set = start on plain HTTPS (long-poll) and upgrade when it can; cleared =
+     websocket straight away. The fresh tries alternate, plain HTTPS first, since HTTPS is what kept working. */
+  var _freshN = 0;
+  function _fresh(why){
+    if (!db) return; _freshN++;
+    var viaHttps = _freshN % 2 === 1;
+    try { if (viaHttps) localStorage.setItem('firebase:previous_websocket_failure', 'true'); else localStorage.removeItem('firebase:previous_websocket_failure'); } catch (e) {}
+    lsnLog('sdk-fresh', { why: String(why || '').slice(0, 60) + (viaHttps ? ' (https first)' : ' (websocket)') });
+    try { db.goOffline(); setTimeout(function(){ try { db.goOnline(); } catch (e) {} }, 1500); } catch (e) {}
+  }
   self.kickSocket = function(why){
     if (!db) return; self._lsn.kicks++; self.reconnects = (self.reconnects || 0) + 1; lsnLog('socket', { why: String(why || '').slice(0, 80) });
-    try { db.goOffline(); setTimeout(function(){ try { db.goOnline(); } catch (e) {} }, 1500); } catch (e) {}
+    _fresh('kick');
   };
   if (Q.get('livetest') === '1') self._testFreeze = function(mode){ self._freeze = mode || null; self._freezeGen = _gen; lsnLog('test-freeze', { why: String(mode) }); };
   self.on = function(path, fn){ var sub = { path: path, fn: fn }; self._subs.push(sub); whenReady(function(){ if (!sub.gone) attach(sub); }); };
@@ -1332,9 +1434,10 @@ function FirebaseLink(){
     for (var i = self._subs.length - 1; i >= 0; i--) { var s = self._subs[i]; if (s.path !== path) continue;
       s.gone = true; try { if (s.ref && s.cb) s.ref.off('value', s.cb); } catch (e) {} self._subs.splice(i, 1); }
     try { ref(path).off(); } catch(e){} };
-  self.update = function(path, obj){ return new Promise(function(res, rej){ whenReady(function(){ ref(path).update(obj).then(res, rej); }); }); };
-  self.set = function(path, val){ return new Promise(function(res, rej){ whenReady(function(){ ref(path).set(val).then(res, rej); }); }); };
-  self.once = function(path){ return new Promise(function(res, rej){ whenReady(function(){ ref(path).once('value').then(function(s){ res(s.val()); }, rej); }); }); };
+  /* desk-p56: while the live connection is down and HTTPS works, writes and one-time reads go over HTTPS */
+  self.update = function(path, obj){ return new Promise(function(res, rej){ whenReady(function(){ if (self.restMode()) restWrite('PATCH', path, obj).then(res, rej); else ref(path).update(obj).then(res, rej); }); }); };
+  self.set = function(path, val){ return new Promise(function(res, rej){ whenReady(function(){ if (self.restMode()) restWrite('PUT', path, val).then(res, rej); else ref(path).set(val).then(res, rej); }); }); };
+  self.once = function(path){ return new Promise(function(res, rej){ whenReady(function(){ if (self.restMode()) restWrite('GET', path).then(res, rej); else ref(path).once('value').then(function(s){ res(s.val()); }, rej); }); }); };
   return self;
 }
 
@@ -1353,10 +1456,10 @@ function queueAction(seq, patch, label){
 }
 var _flushing = false, _flushRetry = null;
 function flushOutbox(){
-  if (_flushing || !link || !link.connected || !_outbox.length) return;
+  if (_flushing || !link || !_linkUp() || !_outbox.length) return;
   _flushing = true;
   (function next(){
-    if (!_outbox.length || !link.connected) { _flushing = false; renderLink(); return; }
+    if (!_outbox.length || !_linkUp()) { _flushing = false; renderLink(); return; }
     var it = _outbox[0];
     // a 'seqRequest' left in the outbox from the retired laptop → camera taps (removed 10/15:
     // the CAMERA leads, the laptop follows) is dropped unsent; it is never a logs patch
@@ -1435,7 +1538,9 @@ function wireListeners(){
   wireJobDriven();
   _camLineStart();
   // The desk takes over the field-log phone's two background duties toward the camera:
-  setInterval(function(){ if (link.connected) link.update('', { hbRec: Date.now() }).catch(function(){}); }, 5000);
+  /* desk-p56: over HTTPS while the live connection is down (every 10 s then) */
+  var _hbRecAt = 0;
+  setInterval(function(){ var r = !link.connected && _linkUp(); if (!link.connected && !r) return; if (r && Date.now() - _hbRecAt < 9500) return; _hbRecAt = Date.now(); link.update('', { hbRec: Date.now() }).catch(function(){}); }, 5000);
 }
 // ── THE CAMERA LINE (desk-p53, MT 10/29 11:22 AM) ────────────────────────────────────────────────────────────────────
 // Mike: "the lock is not moving to the new seq to show me the address". The laptop's screen report showed every Firebase
@@ -1474,6 +1579,7 @@ function _camApply(v, via, k){
   var L = _camLine, before = _camOpen;
   L.hist.push(k); if (L.hist.length > 40) L.hist.shift();
   L.appliedAt = Date.now(); L.via[via] = (L.via[via] || 0) + 1;
+  if (via !== 'sdk') L.lineAt = L.appliedAt;   /* desk-p56: HTTPS brought a camera change (the deaf check reads this) */
   if (v && v.seq && v.ts) { L.lag.push([String(v.seq), Date.now() - Number(v.ts), via]); if (L.lag.length > 8) L.lag.shift(); }
   if (v && v.seq) { var s = String(v.seq), changed = s !== _cameraSeq; _cameraSeq = s; _camOpen = s; _camStartedDay = _todayKey();
     if (changed && _followCam) { try { select(s, { pan: true, from: 'camera' }); } catch (e) { console.warn('camera select', e); } } }
@@ -1488,8 +1594,9 @@ function _camApply(v, via, k){
 // The camera left a parcel. Its close is written BEFORE the camera clears its seq, so on a live link it is already here.
 // If it is not (listeners stalled), ask the server now instead of waiting up to a minute for the 30-s ping.
 function _camCloseWatch(seq){
+  try { _camLine.leftOpen = _camLine.leftOpen || {}; _camLine.leftOpen[seq] = Date.now(); } catch (e) {}
   [2500, 9000, 25000].forEach(function(ms){ setTimeout(function(){
-    try { var l = _serverLogs[seq]; if (l && l.closed) return; if (_rawClosed[seq]) return; _camForcePing('left ' + seq); } catch (e) {}
+    try { var l = _serverLogs[seq]; if (l && l.closed) return; if (_rawClosed[seq]) return; _camForcePing('left ' + seq); _camLogPull(seq); } catch (e) {}
   }, ms); });
 }
 function _camForcePing(why){
@@ -1497,6 +1604,37 @@ function _camForcePing(why){
   if (Date.now() - L.lastForce < 4000) return;
   L.lastForce = Date.now(); L.forced++;
   try { _lsnW.knownAt = 0; window.__deskPing('screen', { screen: window.__deskScreen ? window.__deskScreen() : null }); } catch (e) {}
+}
+/* desk-p56 (MT 10/30): the office ping did not get through for 10 min (12:24-12:34) while the camera line did; a
+   parcel the camera just left is read straight from the server over HTTPS (one record, ~1 KB) and put on the map. */
+function _camLogPull(seq){
+  var L = _camLine; if (MOCK || !link || !link.restWrite || !seq) return;
+  L.pullAt = L.pullAt || {}; if (Date.now() - (L.pullAt[seq] || 0) < 4000) return; L.pullAt[seq] = Date.now();
+  link.restWrite('GET', 'logs/' + seq).then(function(l){
+    if (!l || !l.closed) return; _rawClosed[seq] = 1; if (_isForeignLog(seq, l)) return;
+    var have = _serverLogs[seq]; if (have && have.closed && (_pingSettled(have) || !_pingSettled(l))) return;
+    if (!have || !have.closed) { _lsnW.closesIn++; if (link._lsnLog) link._lsnLog('close-over-https', { why: 'seq ' + seq }); }
+    _serverLogs[seq] = l; L.pulled = (L.pulled || 0) + 1;
+    rebuildLogs(); applyPhotoCounts(); cacheSnapshots(); renderAll();
+  }).catch(function(){});
+}
+/* desk-p56 (MT 10/30 12:24-12:34 PM): while the live connection is down or deaf, the parcels that still need their
+   close (or its rating) are read straight from the server over HTTPS every 15 s, one small record each: every parcel
+   the camera left that is not closed here (45 min), every purple pin the driver marked, and every close still waiting
+   for its rating (15 min). The office ping no longer is the only way a close reaches the map. */
+function _camLogSweep(now){
+  var L = _camLine; if (MOCK || !link || !link.restWrite || !state.job) return;
+  if (link.connected && _sdkHeardAgo() < 20000) return;
+  if (now - (L.sweepAt || 0) < 15000) return; L.sweepAt = now;
+  var want = {}, lo = L.leftOpen || {};
+  Object.keys(lo).forEach(function(k){ var l = _serverLogs[k];
+    if (now - lo[k] > 45 * 60000 || (l && l.closed && _pingSettled(l))) { delete lo[k]; return; } want[k] = lo[k]; });
+  try { if (typeof _dpMarkedOpen === 'function') _dpMarkedOpen().forEach(function(k){ if (!want[k]) want[k] = 1; }); } catch (e) {}
+  Object.keys(_serverLogs || {}).forEach(function(k){ var l = _serverLogs[k];
+    if (l && l.closed && !_pingSettled(l) && now - Number(l.closedAt || 0) < 15 * 60000 && !want[k]) want[k] = Number(l.closedAt || 1); });
+  var ks = Object.keys(want).sort(function(a, b){ return want[b] - want[a]; }).slice(0, 12);
+  if (ks.length) L.sweeps = (L.sweeps || 0) + 1;
+  ks.forEach(function(k){ _camLogPull(k); });
 }
 function _camLineMerge(path, kind, d){
   var L = _camLine, cur = L.val[path], p = String(d.path || '/');
@@ -1529,12 +1667,15 @@ function _camLineOpen(path){
     var es = new EventSource(_CAM_DB + '/sessions/' + DRIVER + '/' + path + '.json?auth=' + encodeURIComponent(tok));
     L.es[path] = es; L.esAt[path] = Date.now(); L.opens++;
     var mine = function(){ return L.es[path] === es; };
-    es.onopen = function(){ if (mine()) { L.esOpen[path] = true; L.esAt[path] = Date.now(); } };
-    var data = function(kind){ return function(ev){ if (!mine()) return; L.esAt[path] = Date.now(); L.esOpen[path] = true;
+    /* desk-p56: L.heard = when the server last actually answered on each path (esAt is also stamped when a stream is
+       only being opened, so it cannot prove the camera's state) */
+    L.heard = L.heard || {};
+    es.onopen = function(){ if (mine()) { L.esOpen[path] = true; L.esAt[path] = Date.now(); L.heard[path] = Date.now(); } };
+    var data = function(kind){ return function(ev){ if (!mine()) return; L.esAt[path] = Date.now(); L.esOpen[path] = true; L.heard[path] = Date.now();
       var d = null; try { d = JSON.parse(ev.data); } catch (e) { return; } if (!d) return;
       try { _camLineIn(path, _camLineMerge(path, kind, d)); } catch (e) { console.warn('camera line', e); } }; };
     es.addEventListener('put', data('put')); es.addEventListener('patch', data('patch'));
-    es.addEventListener('keep-alive', function(){ if (mine()) L.esAt[path] = Date.now(); });
+    es.addEventListener('keep-alive', function(){ if (mine()) { L.esAt[path] = Date.now(); L.heard[path] = Date.now(); } });
     /* the key ran out or the server dropped the stream: open it again with a fresh key */
     var again = function(){ if (!mine()) return; L.esOpen[path] = false; setTimeout(function(){ if (mine()) _camLineOpen(path); }, 1000); };
     es.addEventListener('auth_revoked', again); es.addEventListener('cancel', again);
@@ -1544,12 +1685,12 @@ function _camLineOpen(path){
 function _camPoll(){
   var L = _camLine; if (L.pollBusy || MOCK || !DRIVER || !window.firebase || !firebase.auth) return;
   var u = firebase.auth().currentUser; if (!u) return;
-  L.pollBusy = true; var t0 = Date.now();
+  L.pollBusy = true; var t0 = Date.now(); L.pollTry = t0;
   u.getIdToken().then(function(tok){
     var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, 8000);
     return fetch(_CAM_DB + '/sessions/' + DRIVER + '/active.json?auth=' + encodeURIComponent(tok), { cache: 'no-store', signal: ac ? ac.signal : undefined })
       .then(function(r){ clearTimeout(tm); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
-  }).then(function(v){ L.polls++; L.pollAt = Date.now(); _camActiveIn(v, 'poll', t0); }, function(){ L.pollErr++; })
+  }).then(function(v){ L.polls++; L.pollAt = Date.now(); _camActiveIn(v, 'poll', t0); }, function(e){ L.pollErr++; L.pErrMsg = String((e && (e.name === 'AbortError' ? 'timeout' : e.message)) || e).slice(0, 40); })
     .then(function(){ L.pollBusy = false; });
 }
 /* every 2 s: the paths that are healthy right now agree on a value the map is not showing = show it */
@@ -1557,10 +1698,14 @@ function _camReconcile(){
   var L = _camLine, now = Date.now(), cur = L.hist.length ? L.hist[L.hist.length - 1] : null, ch = [];
   if (L.ch.sdk && _sdkHeardAgo() < 15000) ch.push(L.ch.sdk);
   if (L.ch.line && L.esOpen.active && now - (L.esAt.active || 0) < 75000) ch.push(L.ch.line);
-  if (L.ch.poll && now - L.pollAt < 10000) ch.push(L.ch.poll);
+  /* desk-p56: the poll's own answer time (a poll answer left out as old news kept pollAt fresh on a stale value: the
+     harness saw a closed parcel come back as open from it) */
+  if (L.ch.poll && now - L.ch.poll.at < 10000) ch.push(L.ch.poll);
   if (!ch.length) return;
   for (var i = 1; i < ch.length; i++) if (ch[i].k !== ch[0].k) return;
   if (ch[0].k === cur) return;
+  /* a lock once applied is never applied again (the same rule as every path's own answer) */
+  if (ch[0].k.charAt(0) !== 'N' && L.hist.indexOf(ch[0].k) >= 0) return;
   for (var j = 0; j < ch.length; j++) if (now - ch[j].at < 3000) return;
   _camApply(ch[0].v, 'fix', ch[0].k);
 }
@@ -1579,7 +1724,17 @@ function _camLineStart(){
       });
       /* the main listeners are silent (10 s): fetch the camera's seq every 4 s as well. A stream can die without a word
          on a hotspot; a 32-byte fetch is the same kind of request as the 30-s ping that kept working on 10/29. */
-      if (_sdkHeardAgo() > 10000 && now - L.pollAt > 3500) _camPoll();
+      /* desk-p56: while the stream is alive (its keep-alive is under 40 s old) the fetch is only a slow backup (15 s); it
+         was holding one of the browser's 6 connections to this server every 2-8 s (MT 10/30: 97 fetches timed out) */
+      var esFresh = !!(L.esOpen.active && now - (L.esAt.active || 0) < 40000);
+      if (_sdkHeardAgo() > 10000 && now - Math.max(L.pollAt || 0, L.pollTry || 0) > (esFresh ? 15000 : 3500)) _camPoll();
+      /* desk-p56: live connection down, HTTPS up = the office ping (closes, ratings, office command) every 10 s */
+      if (link && link.restMode && link.restMode() && now - (L.restPingAt || 0) > 10000) { L.restPingAt = now; L.restPings = (L.restPings || 0) + 1;
+        try { _lsnW.knownAt = 0; if (window.__deskPing) window.__deskPing('screen', { screen: window.__deskScreen ? window.__deskScreen() : null }); } catch (e) {} }
+      if (link && link.restMode && link.restMode() && _outbox.length) flushOutbox();
+      /* the status icons follow the moment HTTPS takes over or hands back */
+      var up = _linkUp(); if (up !== L.lastUp) { L.lastUp = up; try { renderLink(); renderShipGate(); renderSetup(); } catch (e) {} }
+      _camLogSweep(now);
       _camReconcile();
     } catch (e) {}
   }, 2000);
@@ -1594,12 +1749,22 @@ window._camOpenStale = function(){
   var noSeq = function(c){ return !!c && !(c.v && c.v.seq); };
   if (L.esOpen.active && now - (L.esAt.active || 0) < 75000 && noSeq(L.ch.line)) return true;
   if (L.pollAt && now - L.pollAt < 60000 && noSeq(L.ch.poll)) return true;
+  /* desk-p56: no path at all (live connection, stream, fetch) has confirmed the camera's state for 10 min = the open
+     parcel here is only a memory; it never holds a reload (a reload loses nothing: the camera owns the parcel) */
+  var um = 600000; try { if (Q.get('livetest') === '1' && Number(Q.get('unconfms')) > 0) um = Number(Q.get('unconfms')); } catch (e) {}
+  var conf = Math.max((L.heard && L.heard.active) || 0, L.pollAt || 0, (link.connected && !_sdkDeaf(now)) ? now - _sdkHeardAgo() : 0);
+  if (now - conf > um) return true;
   return false;
 };
 window.__camLineReport = function(){
   try { var L = _camLine, now = Date.now(), ws = null; try { ws = localStorage.getItem('firebase:previous_websocket_failure'); } catch (e) {}
     return { via: L.via, lag: L.lag.slice(-5), es: L.esOpen.active ? 1 : 0, esS: L.esAt.active ? Math.round((now - L.esAt.active) / 1000) : null,
-      opens: L.opens, errs: L.errs, polls: L.polls, pErr: L.pollErr, forced: L.forced, sdkS: isFinite(_sdkHeardAgo()) ? Math.round(_sdkHeardAgo() / 1000) : null, wsFail: ws }; } catch (e) { return null; }
+      opens: L.opens, errs: L.errs, polls: L.polls, pErr: L.pollErr, pErrM: L.pErrMsg || null, forced: L.forced, sdkS: isFinite(_sdkHeardAgo()) ? Math.round(_sdkHeardAgo() / 1000) : null, wsFail: ws,
+      /* desk-p56: HTTPS mode (on now, writes/reads/fails, last error), the live connection's self-repair, the ping's backup address */
+      https: (function(){ var R = (link && link._rest) || {}, H = (link && link._heal) || {}, P = window.__pingStat || {};
+        return { on: !!(link && link.restMode && link.restMode()), w: R.w || 0, r: R.r || 0, f: R.f || 0, e: R.err || null, pings: L.restPings || 0, pulled: L.pulled || 0, sw: L.sweeps || 0,
+          mode: H.mode || '', downS: H.downSince ? Math.round((now - H.downSince) / 1000) : 0, rebuilt: H.kicks || 0, back: H.upAgain || 0, reload: H.asked ? 1 : 0,
+          pOk: P.ok || 0, pF: P.fail || 0, pAlt: P.alt || 0, pB: P.beacon || 0 }; })() }; } catch (e) { return null; }
 };
 /* ── LAPTOP OFFLINE BANNER (desk-p54; MT 10/29 1:20-2:24 PM) ── after an iPhone restart the laptop never rejoined the
    hotspot, and the map kept working on its saved copy for an hour with nothing to say so. Now: about 2 min with no
@@ -1609,13 +1774,34 @@ var _netW = { badSince: 0, shown: false, shownAt: 0, pingAt: 0, tick: Date.now()
 var NET_OFF_MS = 120000;
 try { if ((Q.get('livetest') === '1' || MOCK) && Number(Q.get('offms')) > 0) NET_OFF_MS = Number(Q.get('offms')); } catch (e) {}
 function _netAnyOk(now){
-  var L = _camLine, fresh = Math.min(NET_OFF_MS, 120000);
+  var fresh = Math.min(NET_OFF_MS, 120000);
   if (link && link.connected) return true;
-  if (L && L.esOpen && L.esOpen.active && now - (L.esAt.active || 0) < fresh) return true;
+  return _httpsUp(now, fresh);
+}
+/* desk-p56: plain HTTPS to the server answered recently (camera line stream, its fetch, the office ping, an HTTPS
+   write). MT 10/30: the live connection was down 40 min while all of these worked; the desk now runs on them. */
+function _httpsUp(now, fresh){
+  now = now || Date.now(); fresh = fresh || 60000;
+  var L = _camLine, R = (link && link._rest) || {};
+  if (L && L.esOpen && L.esOpen.active && now - (L.esAt.active || 0) < Math.max(fresh, 75000)) return true;
   if (L && L.pollAt && now - L.pollAt < fresh) return true;
-  if (_netW.pingAt && now - _netW.pingAt < fresh) return true;
+  if (_netW.pingAt && now - _netW.pingAt < Math.max(fresh, 75000)) return true;
+  if (R.okAt && now - R.okAt < fresh && !(R.failAt > R.okAt)) return true;
   return false;
 }
+/* desk-p56: DEAF = the live connection still answers round trips but has delivered nothing for 2 min while the camera
+   is checking in (the office ping says so) or HTTPS brought a camera change it never did (MT 10/29 all day; 10/30 from
+   ~1:00 PM). Reads then come over HTTPS (camera line, log sweep, ping) and the heal reloads at an idle moment. */
+function _sdkDeaf(now){
+  try { now = now || Date.now(); if (!link || !link.connected) return false;
+    var heard = _sdkHeardAgo(); if (heard < 120000) return false;
+    var srv = !!(_lsnW.srvAt && now - _lsnW.srvAt < 120000 && _lsnW.srvHbAge != null && _lsnW.srvHbAge < 60000 && String(_lsnW.srvHb) !== String(_camHbLast));
+    var L = _camLine, line = !!(L && L.lineAt && (!isFinite(heard) || L.lineAt > now - heard));
+    return srv || line; } catch (e) { return false; }
+}
+/* desk-p56: the desk can reach the server = the live connection, or HTTPS while it is down. Screens, banners and
+   writes and SHIP follow this; only a county change and a reopen still wait for the live connection itself. */
+function _linkUp(){ try { return !!(link && (link.connected || (link.restMode && link.restMode()))); } catch (e) { return false; } }
 function _netBanner(on){
   var b = document.getElementById('netoff');
   if (on && !b) {
@@ -2222,7 +2408,7 @@ function renderCard(){
       (seqStatus(l, seq) === 'incomplete' && !locked && String(seq) !== String(_camOpen) ? '<button class="act" id="b-close" title="Close it: the photos are good"><span>✓ Close</span></button>' : '') +
       ((pc > 0 || shot > 0) ? '<button class="act" id="b-reopen"' + (locked ? ' disabled' : '') + ' title="Reopen: set today\'s photos aside and put it back on the drive list"><span>↺ Reopen</span></button>' : '') +
     '</div>' +
- (pend ? '<div style="margin-top:6px;color:var(--warning);font:700 13px var(--font-display)">⏳ ' + pend + ' change(s) ' + (link && link.connected ? 'sending…' : 'saved on this laptop, waiting for signal') + '</div>' : '') +
+ (pend ? '<div style="margin-top:6px;color:var(--warning);font:700 13px var(--font-display)">⏳ ' + pend + ' change(s) ' + (_linkUp() ? 'sending…' : 'saved on this laptop, waiting for signal') + '</div>' : '') +
     '<div class="ai' + (/^<div class="ai-wait">/.test(ai) ? ' waitrow' : '') + '">' + ai + '<div class="cardfoot">' + detailsLine(r) + '</div></div>';   // value / parcel map: reference only, at the bottom
   // NO PHOTOS IS OFF THE LAPTOP (Dustin 2026-10-17: "with the new system, no pictures is no longer an
   // option" / "i wanted it taken off"). Every parcel is photographed. The button and the P key are gone;
@@ -2267,7 +2453,7 @@ function setupState(){
   return {
     charger: _batt ? !!_batt.charging : null,
     battery: _batt ? Math.round(_batt.level * 100) : null,
-    online: !!(link && link.connected),
+    online: _linkUp(),
     gps: !!(Gps.port || Gps.mock),
     camera: camAt > 0 && Date.now() - camAt < 3 * 60000,
   };
@@ -2315,7 +2501,7 @@ function renderSetup(){
 setInterval(renderSetup, 5000);
 var _offSince = 0;
 function renderOffTag(){ try {   // desk-p43 (approved): a calm tag on the map, only after 20 s without the server
-  var on = !!(link && link.connected); _offSince = on ? 0 : (_offSince || Date.now());
+  var on = _linkUp(); _offSince = on ? 0 : (_offSince || Date.now());
   var el = $('off-tag'); if (!el) { el = document.createElement('div'); el.id = 'off-tag'; el.textContent = 'No signal · keep driving, everything is saved'; var mw = $('mapwrap'); if (!mw) return; mw.appendChild(el); }
   el.style.display = (!on && Date.now() - _offSince > 20000) ? 'block' : 'none'; } catch (e) {} }
 setInterval(renderOffTag, 5000);
@@ -2323,12 +2509,12 @@ function renderLink(){
   var lp = $('link-pill'), n = _outbox.length;
   if (!link) { lp.className = 'pill warn'; lp.textContent = 'Starting…'; }
   else if (link.kind === 'firebase' && link.authFailed) { lp.className = 'pill bad'; lp.textContent = '⚠ NO SYNC ACCESS — call Dustin'; }
-  else if (link.connected) { lp.className = 'pill ico ' + (n ? 'warn' : 'ok'); lp.textContent = n ? ('☁️ ' + n) : '☁️'; lp.title = n ? 'Online · sending ' + n : 'Online (office server)'; }
+  else if (_linkUp()) { lp.className = 'pill ico ' + (n ? 'warn' : 'ok'); lp.textContent = n ? ('☁️ ' + n) : '☁️'; lp.title = n ? 'Online · sending ' + n : 'Online (office server)'; }
   else { lp.className = 'pill ico bad'; lp.textContent = '☁️ ✕' + (n ? ' ' + n : ''); lp.title = 'No signal · keep driving, everything is saved' + (n ? ' · ' + n + ' change' + (n>1?'s':'') + ' go out by themselves when signal is back' : ''); }
   var cp = $('cam-pill'), alive = _camHbSeenAt && (Date.now() - _camHbSeenAt) < 13000;
   var p2pLive = false;   // the direct line is retired (10/18)
-  if ((!link || !link.connected) && p2pLive) { cp.className = 'pill ico ok'; cp.textContent = '📷'; cp.title = 'Camera linked over the direct line (no internet)'; }
-  else if (!link || !link.connected) { cp.className = 'pill ico warn'; cp.textContent = '📷 ?'; cp.title = 'No link — cannot hear the camera phone'; }
+  if (!_linkUp() && p2pLive) { cp.className = 'pill ico ok'; cp.textContent = '📷'; cp.title = 'Camera linked over the direct line (no internet)'; }
+  else if (!_linkUp()) { cp.className = 'pill ico warn'; cp.textContent = '📷 ?'; cp.title = 'No link — cannot hear the camera phone'; }
   else { cp.className = 'pill ico ' + (alive ? 'ok' : 'warn'); cp.textContent = alive ? '📷' : '📷 ✕'; cp.title = alive ? 'Camera linked' : 'Camera silent'; }
   $('drv-chip').textContent = DRIVER || '--';
   fitTopbar();
@@ -2346,7 +2532,7 @@ function renderShipGate(){
   var pend = Number(_camSync.pending || 0), parked = Number(_camSync.parked || 0), idbDead = Number(_camSync.idb) < 0, held = Number(_camSync.held || 0);
   if (pend > 0 || idbDead) btn.setAttribute('data-blocked', '1'); else btn.removeAttribute('data-blocked');
   var set = function(cls, html, title){ b.className = 'pill ico ' + cls; b.innerHTML = html; b.title = title; };
-  if (!link || !link.connected) set('warn', '↑ ?', 'No signal · keep driving, everything is saved. Uploads show again when signal is back; SHIP goes out by itself then.');
+  if (!_linkUp()) set('warn', '↑ ?', 'No signal · keep driving, everything is saved. Uploads show again when signal is back; SHIP goes out by itself then.');
   else if (_camSyncState() !== 'live') set('warn', '↑ ?', 'Camera not reporting — open the camera to confirm uploads');
   else if (idbDead) set('bad', '⛔', 'CAMERA PHONE CANNOT SAVE PHOTOS — keep its tab open, do NOT ship');
   else if (pend > 0) set('bad', '↑ <b>' + pend + '</b>', pend + ' photo' + (pend > 1 ? 's' : '') + ' uploading — counts down to ✓');
@@ -2391,7 +2577,7 @@ function _shipQTick(){
   try {
     if (!_shipQ || _shipRunning || LOOK) return;
     if (!state.job || (_shipQ.bucket && state.job.bucket !== _shipQ.bucket)) { _shipQSet(null); return; }   // another county is open: that county's own SHIP
-    if (!link || !link.connected) { _shipQWhy = 'no signal'; _shipQNote(); return; }
+    if (!link || !_linkUp()) { _shipQWhy = 'no signal'; _shipQNote(); return; }
     shipSession({ auto: true });
   } catch (e) {}
 }
@@ -2402,7 +2588,7 @@ async function shipSession(opts){
   if (LOOK) { toast('Look-only: SHIP is off', 2500); return; }
   if (_shipRunning) return;
   if (_camOpen) { if (auto) return _shipQWait('a parcel is open on the camera'); await alertBox('Tap STOP first', 'SEQ ' + _camOpen + ' is still open on the camera. Tap STOP on the camera to close it, then SHIP.'); return; }   // 10/18
-  if (!link || !link.connected) {
+  if (!link || !_linkUp()) {   /* desk-p56: SHIP goes over HTTPS too while the live connection is down */
     if (auto) return _shipQWait('no signal');
     var _cl = Object.values(state.logs || {}).filter(function(l){ return seqStatus(l) === 'complete' && !l.shipped; }).length;
     if (!_cl) { await alertBox('Nothing to ship', 'Nothing complete to ship yet.'); return; }
@@ -3091,7 +3277,7 @@ async function gpsBoost(port){
     else if (Gps._rmcT.length === 0) { await gpsWrite(port, GPS_FACTORY); Gps.boost = 'restored'; }
     else Gps.boost = 'nochange';
     renderPos();
-    try { if (window.link && link.connected) link.set('gpsBoost/' + Date.now(), { before: before, after: Gps.rateHz, result: Gps.boost, build: DESK_BUILD }).catch(function(){}); } catch (e) {}
+    try { if (window.link && _linkUp()) link.set('gpsBoost/' + Date.now(), { before: before, after: Gps.rateHz, result: Gps.boost, build: DESK_BUILD }).catch(function(){}); } catch (e) {}
   }, 8000);
 }
 if ('serial' in navigator) {
@@ -3213,7 +3399,7 @@ var SpeedLim = (function(){
 // WHAT THE SPEED READOUT SEES, reported once a minute (10/19: "still no mph" — check it from here)
 setInterval(function(){
   try {
-    if (!(window.link && link.connected)) return;
+    if (!(window.link && _linkUp())) return;
     var age = Gps.fixAt ? Math.round((Date.now() - Gps.fixAt) / 1000) : null, lim = null;
     try { if (Gps.pos) lim = SpeedLim.at(Gps.pos[0], Gps.pos[1]); } catch (e) {}
     link.set('deskSpeed', { at: Date.now(), build: DESK_BUILD, gps: Gps.src || null, gpsHz: Gps.rateHz, gpsBoost: Gps.boost, fixAgeS: age, hasPos: !!Gps.pos, setup: setupState(),
@@ -3228,7 +3414,7 @@ setInterval(function(){
 var _deskPosLast = null;
 setInterval(function(){
   try {
-    if (LOOK || MOCK || Gps.mock || !DRIVER || DRIVER === 'DS' || !(window.link && link.connected)) return;
+    if (LOOK || MOCK || Gps.mock || !DRIVER || DRIVER === 'DS' || !(window.link && _linkUp())) return;
     if (!Gps.pos || !Gps.fixAt || Gps.noFix) return;
     var age = (Date.now() - Gps.fixAt) / 1000; if (age > 60) return;
     var now = Date.now(), p = [Gps.pos[0], Gps.pos[1]];
@@ -3375,7 +3561,7 @@ function setLayout(m){
 // the minimized log: current seq + counters + link, click anywhere to open
 function renderStrip(){
   if (_layout !== 'logmin') return;
-  var st = $('strip'), seq = state.currentSeq, S = seq ? displayStatus(seq) : null, n = _outbox.length, on = link && link.connected;
+  var st = $('strip'), seq = state.currentSeq, S = seq ? displayStatus(seq) : null, n = _outbox.length, on = _linkUp();
   var cnt = function(id, cls, lbl){ return '<div><div class="s-n ' + cls + '">' + esc($(id).textContent) + '</div><div class="s-l">' + lbl + '</div></div>'; };
   st.innerHTML = '<div class="s-open">»</div>' +
     (function(){ var nx = nextSeq(), cam = _cameraSeq && _rowFor(_cameraSeq) ? _cameraSeq : null, o = '';
@@ -3509,7 +3695,7 @@ var DeskAPI = window.DeskAPI = {
   job: function(){ return state.job ? Object.assign({}, state.job) : null; },
   currentSeq: function(){ return state.currentSeq; },
   cameraSeq: function(){ return _cameraSeq; },       // what the camera is on now
-  online: function(){ return !!(link && link.connected); },
+  online: function(){ return _linkUp(); },
   position: function(){ return Gps.pos ? { lat: Gps.pos[0], lng: Gps.pos[1], course: Gps.course, speedKn: Gps.speedKn, fixAt: Gps.fixAt, src: Gps.src } : null; },
   select: function(seq){ select(seq, { pan: true }); },
   onRender: function(fn){ _renderHooks.push(fn); },   // after every redraw (statuses changed)
@@ -3842,7 +4028,7 @@ $('gps-toggle').onclick = function(){ var have = !!(Gps.port || Gps.mock || (Gps
 setInterval(renderGpsToggle, 1000);
 if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display = ''; _h2.onclick = function(){ $('here-btn').click(); renderGpsToggle(); }; } catch (e) {} }
 // DESK ERRORS REACH THE SERVER (10/18): a laptop error was invisible from here. Capped per load.
-(function(){ var n = 0; var send = function(msg){ try { if (n++ < 20 && window.link && link.connected) link.set('deskErr/' + Date.now(), { msg: String(msg).slice(0, 300), build: DESK_BUILD }).catch(function(){}); } catch (e) {} };
+(function(){ var n = 0; var send = function(msg){ try { if (n++ < 20 && window.link && _linkUp()) link.set('deskErr/' + Date.now(), { msg: String(msg).slice(0, 300), build: DESK_BUILD }).catch(function(){}); } catch (e) {} };
   window.addEventListener('error', function(e){ send((e.message || 'error') + ' @' + (e.lineno || '?')); });
   window.addEventListener('unhandledrejection', function(e){ send('promise: ' + ((e.reason && (e.reason.message || e.reason)) || '?')); }); })();
 // ── THE LAPTOP UPDATES ITSELF, ONLY WHEN IDLE (Dustin 10/20, fix list B4: "10 refreshes" on 10/19; a tab
@@ -3883,7 +4069,7 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
     var t = _tries(); if (t.length >= 3) return;
     t.push(Date.now()); try { sessionStorage.setItem('desk_upd_tries', JSON.stringify(t)); } catch (e) {}
     _pending = true; _want = null;
-    try { if (window._noteShow) _noteShow('upd-note', 'Updating your map from the office — back in 15 seconds. Nothing to do.', 0); } catch (e) {}
+    try { if (window._noteShow) _noteShow('upd-note', label === 'live connection' ? 'Refreshing the map\'s connection — back in 15 seconds. Nothing to do.' : 'Updating your map from the office — back in 15 seconds. Nothing to do.', 0); } catch (e) {}
     setTimeout(function(){ if (idle()) { _reloadWhy('update ' + label + (why ? ' (' + why + ')' : '')); location.reload(); return; } _pending = false; _want = label; try { var n = $('upd-note'); if (n) n.style.display = 'none'; } catch (e) {} }, 2000);
   }
   function chk(){
@@ -3895,6 +4081,8 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
     }).catch(function(){});
   }
   window._deskReloadWhenIdle = reloadWhenIdle;
+  /* desk-p56: the live connection came back by itself before the idle moment = its reload is no longer wanted */
+  window._deskReloadCancel = function(label){ if (_want === label && !_pending) { _want = null; window.__deskWantReload = null; _idleSince = 0; } };
   // the map's offline helper (map-sw sw2) says a newer build landed after this page opened on the saved copy (slow
   // link): move onto it at the next idle moment, the same as any update (desk-p51; the helper never reloads a page itself)
   try { if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function(e){ var d = e.data || {};
