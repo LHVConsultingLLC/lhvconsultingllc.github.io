@@ -925,7 +925,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p53';
+var DESK_BUILD = 'desk-p54';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1601,6 +1601,54 @@ window.__camLineReport = function(){
     return { via: L.via, lag: L.lag.slice(-5), es: L.esOpen.active ? 1 : 0, esS: L.esAt.active ? Math.round((now - L.esAt.active) / 1000) : null,
       opens: L.opens, errs: L.errs, polls: L.polls, pErr: L.pollErr, forced: L.forced, sdkS: isFinite(_sdkHeardAgo()) ? Math.round(_sdkHeardAgo() / 1000) : null, wsFail: ws }; } catch (e) { return null; }
 };
+/* ── LAPTOP OFFLINE BANNER (desk-p54; MT 10/29 1:20-2:24 PM) ── after an iPhone restart the laptop never rejoined the
+   hotspot, and the map kept working on its saved copy for an hour with nothing to say so. Now: about 2 min with no
+   network (Windows says offline, or the round trip, the 30-s ping and the camera line ALL silent) shows one calm, plain
+   banner; it goes the moment the network is back. No sound, nothing to tap. A sleeping laptop's gap never counts. */
+var _netW = { badSince: 0, shown: false, shownAt: 0, pingAt: 0, tick: Date.now(), episodes: 0, lastOffS: 0 };
+var NET_OFF_MS = 120000;
+try { if ((Q.get('livetest') === '1' || MOCK) && Number(Q.get('offms')) > 0) NET_OFF_MS = Number(Q.get('offms')); } catch (e) {}
+function _netAnyOk(now){
+  var L = _camLine, fresh = Math.min(NET_OFF_MS, 120000);
+  if (link && link.connected) return true;
+  if (L && L.esOpen && L.esOpen.active && now - (L.esAt.active || 0) < fresh) return true;
+  if (L && L.pollAt && now - L.pollAt < fresh) return true;
+  if (_netW.pingAt && now - _netW.pingAt < fresh) return true;
+  return false;
+}
+function _netBanner(on){
+  var b = document.getElementById('netoff');
+  if (on && !b) {
+    b = document.createElement('div'); b.id = 'netoff'; b.setAttribute('role', 'status');
+    /* over the map, centred under the address chip (the panel stays readable); a narrow window: over the whole page */
+    var mw = document.getElementById('mapwrap'), inMap = !!(mw && mw.clientWidth >= 420);
+    b.style.cssText = 'position:' + (inMap ? 'absolute' : 'fixed') + ';left:50%;top:64px;transform:translateX(-50%);z-index:1500;max-width:min(560px,calc(100% - 32px));'
+      + 'background:#2b2a1c;border:1px solid #b9a24a;color:#f4ecc8;border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.45);'
+      + 'font:600 14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;pointer-events:none';
+    b.innerHTML = '<b style="font-weight:800">Laptop is offline</b> — reconnect Wi-Fi to your iPhone hotspot.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>';
+    (inMap ? mw : document.body).appendChild(b);
+  }
+  if (b) b.style.display = on ? 'block' : 'none';
+  if (on && !_netW.shown) { _netW.shown = true; _netW.shownAt = Date.now(); _netW.episodes++; }
+  if (!on && _netW.shown) { _netW.shown = false; _netW.lastOffS = Math.round((Date.now() - (_netW.badSince || _netW.shownAt)) / 1000); }
+}
+function _netCheck(){
+  try {
+    var now = Date.now(), gap = now - _netW.tick; _netW.tick = now;
+    if (gap > 60000) _netW.badSince = 0;   /* the laptop was asleep: the clock starts again on wake */
+    var off = navigator.onLine === false;
+    /* before any county is open there is no link: only Windows' own word counts */
+    var bad = off || (!!link && !MOCK && !_netAnyOk(now));
+    if (MOCK && !off) bad = !!window.__netForceBad;
+    if (!bad) { if (_netW.shown) _netBanner(false); _netW.badSince = 0; return; }
+    if (!_netW.badSince) _netW.badSince = now;
+    if (now - _netW.badSince >= NET_OFF_MS && !_netW.shown) _netBanner(true);
+  } catch (e) {}
+}
+setInterval(_netCheck, Math.min(10000, Math.max(1000, Math.round(NET_OFF_MS / 6))));
+window.addEventListener('offline', function(){ _netCheck(); });
+window.addEventListener('online', function(){ try { if (_netW.shown) _netBanner(false); _netW.badSince = 0; } catch (e) {} });
+window.__netReport = function(){ try { return { off: _netW.shown ? Math.round((Date.now() - _netW.badSince) / 1000) : 0, n: _netW.episodes, lastS: _netW.lastOffS }; } catch (e) { return null; } };
 var _publishedFor = null;
 // The re-drive guard: jobDriven/<jobKey> is merged server-side from every driver (same node the phone reads)
 var _jdPath = null;
@@ -1655,6 +1703,7 @@ function _pingSettled(l){
 }
 window.__deskPingReply = function(j){
   try {
+    _netW.pingAt = Date.now();   /* desk-p54: an answer from the office = the network works (offline banner) */
     if (!j || !j.ok) return;
     if (j.hbCam && j.now) { _lsnW.srvAt = Date.now(); _lsnW.srvHb = j.hbCam; _lsnW.srvHbAge = Number(j.now) - Number(j.hbCam);
       /* the camera IS checking in: the screen says so even while the listener is catching up */
@@ -2048,6 +2097,84 @@ function renderList(){
       '<div class="a"><b>' + esc(s.street || '(no address)') + badge + '</b><span>' + ST_LABEL[S] + shipped + nxt + mul + '</span></div>' +
       '<div class="ai2">' + aiMini(l, S) + '</div></div>';
   }).join('') || '<div class="empty-card" style="padding:14px">Nothing here.</div>';
+  renderViewCount();
+}
+/* desk-p54 ON SCREEN COUNT (MT 10/29 "total in map view ... just a count"; Dustin: "how much time you need to allot for a
+   neighborhood"). In On Screen mode the option reads "On Screen · 37 · ~48 min": parcels on today's list still to drive
+   (to drive / marked) inside the map view, and the time they take at the driver's own pace. A batch counts each seq, a
+   stacked spot each parcel. Zoom-0 pixels x 2^z, the same numbers the stacks use: no projection, no map work, and the
+   code never touches the zoom. Other modes: plain "On Screen".
+   THE PACE (Dustin 10/29): the most recent hour of ACTIVE driving (gaps over 20 min = a break, left out) once it holds
+   5+ closes over 20+ working minutes; else today's pace (the one the ⏱ card shows) once there are 10 closes today;
+   else no time at all. No pace is ever invented: the desk has no plan rate, so the fallback ends at the count alone. */
+var VC_HOUR_MS = 3600000, VC_BREAK_MS = 20 * 60000, VC_MIN_ACTIVE_MS = 20 * 60000, VC_MIN_RECENT = 5, VC_MIN_CLOSES = 10;
+function _vcFmt(n, pace){
+  if (!n || !pace || !(pace > 0) || !isFinite(pace)) return '';
+  var m = Math.max(1, Math.round(n / pace * 60));
+  if (m < 60) return '~' + m + ' min';
+  /* 10 hours and up: whole hours (minutes are noise there, and the text stays on one line at 1280 wide) */
+  if (m >= 600) return '~' + Math.round(m / 60) + ' h';
+  return '~' + Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' m' : '');
+}
+/* ts = today's close times, oldest first. Walks back from the newest close adding the gaps between closes until an
+   hour of active time is reached; a gap over 20 min is a break (neither its time nor its close counts). */
+function _vcRecentPace(ts){
+  var active = 0, gaps = 0;
+  for (var i = ts.length - 1; i > 0; i--) {
+    var g = ts[i] - ts[i - 1];
+    if (g > VC_BREAK_MS) continue;
+    if (active + g > VC_HOUR_MS) break;
+    active += g; gaps++;
+  }
+  if (gaps + 1 < VC_MIN_RECENT || active < VC_MIN_ACTIVE_MS) return null;
+  return gaps / (active / VC_HOUR_MS);
+}
+function _vcPace(){
+  var day = _lhvDate(), ts = [];
+  Object.keys(state.logs || {}).forEach(function(k){ var l = state.logs[k], t = l && l.closed && String(l.driveDate || day) === day ? Number(l.closedAt || 0) : 0; if (t > 0) ts.push(t); });
+  ts.sort(function(a, b){ return a - b; });
+  var r = _vcRecentPace(ts);
+  if (r) return { pace: r, src: 'the last hour' };
+  var d = ts.length >= VC_MIN_CLOSES ? _dpPace() : null;
+  return d ? { pace: d, src: 'today' } : null;
+}
+function _viewCount(){
+  if (!map || !state.job || !map._loaded) return null;
+  var pb = map.getPixelBounds(), sc = Math.pow(2, map.getZoom()), rows = listable(), n = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var k = String(rows[i].seq), p = _stkP0[k] || _stkP0[pinKey(k)];
+    if (!p) continue;
+    var x = p.x * sc, y = p.y * sc;
+    if (x < pb.min.x || x > pb.max.x || y < pb.min.y || y > pb.max.y) continue;
+    var s = displayStatus(k);
+    if (s === 'pending' || s === 'marked') n++;
+  }
+  return n;
+}
+function renderViewCount(){
+  var o = $('order'), op = o && o.querySelector('option[value="view"]');
+  if (!op) return;
+  var t = 'On Screen', tip = 'List order';
+  if (o.value === 'view') {
+    var n = _viewCount();
+    if (n != null) {
+      var pc = n ? _vcPace() : null, tm = pc ? _vcFmt(n, pc.pace) : '';
+      t += ' · ' + n + (tm ? ' · ' + tm : '');
+      tip = n + ' to drive in the map view' + (tm ? ' · ' + tm + ' at ' + pc.pace.toFixed(1) + '/hr (your pace, ' + pc.src + ')' : (n ? ' · the time shows once there is a pace today' : ''));
+    }
+  }
+  if (o.title !== tip) o.title = tip;
+  if (op.textContent === t) return;
+  op.textContent = t;
+  /* the dropdown widens to its text while it shows a count (the search box gives the room; same row, the list never
+     moves), and goes back to its own width in the other modes. Measured only when the text changes. */
+  if (t === 'On Screen') { o.style.flex = ''; o.style.maxWidth = ''; return; }
+  try {
+    var cs = getComputedStyle(o), cx = renderViewCount._cx || (renderViewCount._cx = document.createElement('canvas').getContext('2d'));
+    cx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    var w = Math.ceil(cx.measureText(t).width + parseFloat(cs.paddingLeft || 0) + parseFloat(cs.paddingRight || 0) + 26);
+    o.style.flex = '0 0 ' + w + 'px'; o.style.maxWidth = '70%';
+  } catch (e) {}
 }
 function renderCard(){
   var c = $('card'), seq = state.currentSeq;
@@ -4337,7 +4464,9 @@ window.__micDiag = async function(){
       shipQ: window._shipQ ? { at: window._shipQ.at, n: window._shipQ.n, why: String(window._shipQWhy || '').slice(0, 60) } : null,
       offlineReady: window.__offReadyReport ? window.__offReadyReport() : null,
       /* desk-p53: the camera line (which path brought the camera's seq, how long after the lock, stream + fetch health) */
-      cam: window.__camLineReport ? window.__camLineReport() : null };
+      cam: window.__camLineReport ? window.__camLineReport() : null,
+      /* desk-p54: the offline banner (seconds showing now, episodes today, last one's length) */
+      net: window.__netReport ? window.__netReport() : null };
   } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
   window.__deskScreen = function(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} return sc; };
   function tick(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }

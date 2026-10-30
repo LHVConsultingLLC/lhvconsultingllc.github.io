@@ -102,9 +102,18 @@
   var lastReplyAt = 0;
   // one handler for both paths (desk-p51): the listener and the 30-s ping's answer, which needs no live listener
   // (MT 10/28: the office's answers never showed while the laptop's listeners were stalled). Each answer shows once.
-  function replyIn(v){ try { if (!v || !v.at || Number(v.at) <= lastReplyAt) return; lastReplyAt = Number(v.at);
-    if (Date.now() - Number(v.at) > 6 * 3600000) return;   /* not a stale one from another day */
-    open(); render(v.q || 'your question', v.say || '', v.action || null, 'Claude · answered by the office'); st.replyAt = Number(v.at); } catch (e) {} }
+  // desk-p54 (MT 10/29 1:04 PM "whenever I refresh it goes back to pull up this older message"): sessions/<D>/askReply
+  // stays on the server, and "shown once" lived only in memory, so every reload popped the 11:33 answer again. Now an
+  // answer is marked seen on THIS laptop (localStorage askc_seen = the newest answer time shown here) the moment it
+  // shows, and an answer older than 30 min never pops by itself. A reload never re-opens it.
+  var REPLY_FRESH_MS = 30 * 60000, SEEN_KEY = 'askc_seen';
+  var seenAt = function(){ try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch (e) { return 0; } };
+  var markSeen = function(at){ try { if (Number(at) > seenAt()) localStorage.setItem(SEEN_KEY, String(Number(at))); } catch (e) {} };
+  function replyIn(v){ try { if (!v || !v.at) return; var at = Number(v.at);
+    if (!(at > 0) || at <= lastReplyAt || at <= seenAt()) return; lastReplyAt = at;
+    if (Date.now() - at > REPLY_FRESH_MS) { markSeen(at); st.replyOld = at; return; }   /* an old answer never pops by itself */
+    markSeen(at);
+    open(); render(v.q || 'your question', v.say || '', v.action || null, 'Claude · answered by the office'); st.replyAt = at; } catch (e) {} }
   window.__askReplyIn = replyIn;
   function watchReplies(){
     try { if (!window.link || !link.on || watchReplies.done) return; watchReplies.done = true;

@@ -214,16 +214,57 @@
     if (window.__DESK_MOCK) {
       var url = window.__DESK_MOCK.replace(/\/+$/, '') + '/' + name;
       var h = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-      if (!h.ok) return null;
+      if (!h.ok) return netSource(bucket, K);   /* harness: the server path stands in when the mock folder lacks the file */
       return { size: Number(h.headers.get('content-length')) || 0, mod: h.headers.get('last-modified') || '',
         get: function () { return fetch(url, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }); } };
     }
-    var fh = await folderHandle(bucket, K); if (!fh) return null;
+    var fh = await folderHandle(bucket, K); if (!fh) return netSource(bucket, K);
     var f = await fh.getFile();
     // reading the bytes now brings an online-only Dropbox file down while there is signal
     return { size: f.size, mod: String(f.lastModified), handle: fh, file: f,
       get: function () { return f.arrayBuffer().then(function (b) { return new Blob([b], { type: 'application/vnd.pmtiles' }); }); } };
   }
+  // ── FROM THE SERVER (desk-p54, 10/29: RF sat at 0% on Richland with "no folder") ──
+  // Chrome only lets the page read the ONE Dropbox folder the driver once picked (and, after a reload, only after a tap):
+  // never its parent, never the next county's folder. So when no folder holds the pack, the server (driveSheet, kind
+  // 'pack') hands a Dropbox temporary link (4 h, HTTP Range) and the background copy streams the pack straight into
+  // Chrome's own storage. No folder, no tap. Only for that copy: a pack is never drawn from the network.
+  var NET = {};   // file name → { at, r } (a link is kept 3 h; a failure is asked again after 2 min)
+  async function packLink(bucket, K) {
+    var kind = K === P.imagery ? 'imagery' : 'streets';
+    if (window._deskPackLink) return window._deskPackLink(bucket, kind);   /* tests only */
+    var fb = window.firebase, user = fb && fb.auth && fb.auth().currentUser; if (!user) return { err: 'not signed in' };
+    var as = ''; try { as = (new URLSearchParams(location.search).get('as') || '').toUpperCase(); } catch (e) {}
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { try { ac && ac.abort(); } catch (e) {} }, 30000);
+    try {
+      var body = { idToken: await user.getIdToken(), bucket: bucket, kind: 'pack', pack: kind }; if (as) body.drv = as;
+      var r = await fetch('https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: ac ? ac.signal : undefined });
+      var j = await r.json(); return j && j.ok ? j : { err: (j && j.error) || ('HTTP ' + r.status) };
+    } finally { clearTimeout(tm); }
+  }
+  async function netSource(bucket, K) {
+    if (!OP.ok || window.__DESK_MOCK && !window._deskPackLink || navigator.onLine === false) return null;
+    var name = bucket + K.file, c = NET[name];
+    if (!c || Date.now() - c.at > (c.r && c.r.link ? 3 * 3600e3 : 120000)) {
+      var r = null; try { r = await packLink(bucket, K); } catch (e) { r = { err: String((e && e.message) || e).slice(0, 60) }; }
+      c = NET[name] = { at: Date.now(), r: r || { err: 'no answer' } };
+    }
+    var x = c.r;
+    if (!x || !x.link || !x.size) { NET[name].why = x && x.missing ? 'not on the server' : ((x && x.err) || 'no link'); return null; }
+    return { size: Number(x.size), mod: 'dbx:' + (x.hash || x.rev || ''), net: true, url: x.link, from: x.name || '',
+      read: function (a, b) { return netRead(bucket, K, a, b); } };
+  }
+  async function netRead(bucket, K, a, b) {   // bytes [a, b) of the server's pack; one fresh link if the old one has run out
+    for (var t = 0; t < 2; t++) {
+      var c = NET[bucket + K.file], u = c && c.r && c.r.link;
+      if (u) { try { var r = await fetch(u, { headers: { Range: 'bytes=' + a + '-' + (b - 1) }, cache: 'no-store' });
+        if (r.status === 206 || (r.status === 200 && a === 0)) { var buf = await r.arrayBuffer(); return buf.byteLength > b - a ? buf.slice(0, b - a) : buf; } } catch (e) {} }
+      delete NET[bucket + K.file]; await netSource(bucket, K);
+    }
+    throw new Error('server read');
+  }
+  function srcRead(src, a, b) { return src.file ? src.file.slice(a, b).arrayBuffer() : src.read(a, b); }
   async function readInPlace(K, bucket, src) {   // BIG: open the File itself; IndexedDB keeps only a note
     await usePack(K, bucket, src.file);
     if (K.pk) { K.pk.handle = src.handle; K.pk.inPlace = true; }
@@ -238,7 +279,8 @@
     if (!K.pk) { try { rec = await DB.get('kv', K.key + bucket); } catch (e) {}
       if (rec && rec.blob) { try { await usePack(K, bucket, rec.blob); } catch (e) { console.warn('saved ' + K.key + ' pack unreadable', e); rec = null; } } }
     var src = null; try { src = await sourceFile(bucket, K); } catch (e) {}   // no signal / no folder: keep the saved copy
-    if (K.pk && K.pk.opfs) { if (src && src.file) copySoon(); return; }   // the copier notices a newer folder file itself
+    if (K.pk && K.pk.opfs) { if (src && (src.file || src.net)) copySoon(); return; }   // the copier notices a newer folder file itself
+    if (src && src.net) { copySoon(); return; }   /* desk-p54: only the server has it: Chrome's copy is made from there (live imagery meanwhile) */
     if (!src) { if (rec && rec.inPlace) { K.needsFolder = true; refreshStatus(); } return; }
     // a folder file: read in place until Chrome's copy is complete (a small one too, when the copy is possible)
     if (src.handle && (src.size > BIG || (OP.ok && !(rec && rec.blob)))) {
@@ -293,6 +335,18 @@
   // copy's own size). 'pause' stops it between pieces; 'gap' sets the rest between pieces (0 when the map is idle).
   var WSRC = [
     'var stop = {}, gap = {};',
+    '/* desk-p54: one 8 MB piece of the server\'s pack by HTTP Range; a dropped piece is asked again (4 tries), a refused link ends the copy */',
+    'async function piece(url, a, b) {',
+    '  for (var t = 0; ; t++) {',
+    '    var r = null;',
+    '    try { r = await fetch(url, { headers: { Range: "bytes=" + a + "-" + (b - 1) }, cache: "no-store" }); } catch (e) { r = null; }',
+    '    if (r && (r.status === 206 || (r.status === 200 && a === 0))) {',
+    '      try { var u = new Uint8Array(await r.arrayBuffer()); if (u.length >= b - a) return u.length > b - a ? u.subarray(0, b - a) : u; } catch (e) {}',
+    '    } else if (r && r.status >= 400 && r.status < 500) throw new Error("link HTTP " + r.status);',
+    '    if (t >= 3) throw new Error("network: piece at " + a + " failed 4 times");',
+    '    await new Promise(function (res) { setTimeout(res, 2000 * Math.pow(2, t)); });',
+    '  }',
+    '}',
     'onmessage = async function (e) { var m = e.data;',
     '  if (m.op === "pause") { stop[m.name] = 1; return; }',
     '  if (m.op === "gap") { gap[m.name] = m.gap; return; }',
@@ -303,13 +357,14 @@
     '    var root = await navigator.storage.getDirectory(), dir = await root.getDirectoryHandle("packs", { create: true });',
     '    var fh = await dir.getFileHandle(m.name, { create: true });',
     '    h = await fh.createSyncAccessHandle();',
+    '    var size = m.file ? m.file.size : m.size;',
     '    pos = h.getSize();',
-    '    if (m.fresh || pos > m.file.size) { h.truncate(0); pos = 0; }',
+    '    if (m.fresh || pos > size) { h.truncate(0); pos = 0; }',
     '    else pos = Math.max(0, pos - 16777216);',
     '    postMessage({ name: m.name, pos: pos });',
-    '    while (pos < m.file.size) {',
+    '    while (pos < size) {',
     '      if (stop[m.name]) break;',
-    '      var buf = new Uint8Array(await m.file.slice(pos, Math.min(m.file.size, pos + 8388608)).arrayBuffer());',
+    '      var end = Math.min(size, pos + 8388608), buf = m.file ? new Uint8Array(await m.file.slice(pos, end).arrayBuffer()) : await piece(m.url, pos, end);',
     '      if (!buf.length) throw new Error("short read");',
     '      var n = h.write(buf, { at: pos });',
     '      if (n !== buf.length) throw new Error("short write");',
@@ -318,7 +373,7 @@
     '      if (gap[m.name]) await new Promise(function (r) { setTimeout(r, gap[m.name]); });',
     '    }',
     '    h.flush(); h.close(); h = null;',
-    '    postMessage({ name: m.name, pos: pos, end: true, done: pos >= m.file.size });',
+    '    postMessage({ name: m.name, pos: pos, end: true, done: pos >= size });',
     '  } catch (err) {',
     '    try { if (h) { h.flush(); pos = h.getSize(); h.close(); } } catch (x) {}',
     '    postMessage({ name: m.name, pos: pos, end: true, err: String((err && err.name) || "Error") + ": " + String((err && err.message) || err).slice(0, 120) });',
@@ -368,7 +423,7 @@
     if (!ks.length) throw new Error('no tiles');
     for (var i = 0; i < 6; i++) {
       var r = pk.idx.get(ks[Math.floor(i * (ks.length - 1) / 5)]);
-      var a = new Uint8Array(await f.slice(r[0], r[0] + r[1]).arrayBuffer()), b = new Uint8Array(await src.file.slice(r[0], r[0] + r[1]).arrayBuffer());
+      var a = new Uint8Array(await f.slice(r[0], r[0] + r[1]).arrayBuffer()), b = new Uint8Array(await srcRead(src, r[0], r[0] + r[1]));
       if (a.length !== b.length) throw new Error('tile length');
       for (var j = 0; j < a.length; j += 97) if (a[j] !== b[j]) throw new Error('tile bytes');
       if (a[a.length - 1] !== b[b.length - 1]) throw new Error('tile end');
@@ -386,38 +441,43 @@
     if (fresh) {
       // a newer folder file: the old copy stops being drawn first (the folder file is read in place meanwhile)
       if (K.pk && K.pk.opfs && _bucket === bucket) { K.pk = null; ensureLayer(); try { await readInPlace(K, bucket, src); } catch (e) {} }
-      await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: false, at: Date.now() });
+      await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: false, at: Date.now(), via: src.net ? 'server' : 'folder' });
     }
     st.wait = ''; st.err = ''; st.copied = fresh ? 0 : have; st.copying = true; st.t0 = st.t0 || Date.now();
-    var t0 = Date.now(), w = worker(), gap = gapNow();
+    var t0 = Date.now(), w = worker(), gap = src.net ? netGap() : gapNow();
     var res = new Promise(function (r) { _wait[name] = r; });
-    w.postMessage({ op: 'copy', name: name, file: src.file, fresh: fresh, gap: gap });
+    st.via = src.net ? 'server' : 'folder';
+    w.postMessage({ op: 'copy', name: name, file: src.file || null, url: src.net ? src.url : null, size: src.size, fresh: fresh, gap: gap });
     wakeOn();
     var watch = setInterval(function () {
       if (!idleNow()) { w.postMessage({ op: 'pause', name: name }); return; }
-      var g = gapNow(); if (g !== gap) { gap = g; w.postMessage({ op: 'gap', name: name, gap: g }); }
+      var g = src.net ? netGap() : gapNow(); if (g !== gap) { gap = g; w.postMessage({ op: 'gap', name: name, gap: g }); }
     }, 2000);
     var d = await res; clearInterval(watch); st.copying = false; wakeOff();
     st.secs = (st.secs || 0) + Math.round((Date.now() - t0) / 1000);
     if (d.err) {
       st.err = d.err;
-      if (/Quota|space|NoModification/i.test(d.err)) {   // the disk filled during the copy: give the space back, keep reading in place
-        if (/Quota|space/i.test(d.err)) { try { await (await opDir()).removeEntry(name); } catch (e) {} try { await DB.del('kv', 'opfs:' + name); } catch (e) {} st.copied = 0; st.wait = 'low disk'; OP.lowAt = Date.now(); }
+      if (/^Error: (link|network)/.test(d.err)) { delete NET[name]; st.wait = 'asks the server again'; }   /* desk-p54: an old link: a new one on the next tick, the copy resumes where it stopped */
+      if (/Quota|space|NoModification|short write/i.test(d.err)) {   // the disk filled during the copy: give the space back, keep reading in place
+        if (/Quota|space|short write/i.test(d.err)) { try { await (await opDir()).removeEntry(name); } catch (e) {} try { await DB.del('kv', 'opfs:' + name); } catch (e) {} st.copied = 0; st.wait = 'low disk'; OP.lowAt = Date.now(); }
       }
       return false;
     }
     if (!d.done) { st.wait = 'waits for idle'; return false; }
     try {
       var v = await verify(name, src);
-      await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: true, at: Date.now(), tiles: v.tiles, secs: st.secs });
+      await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: true, at: Date.now(), tiles: v.tiles, secs: st.secs, via: src.net ? 'server' : 'folder', from: src.from || '' });
       st.done = true; st.copied = src.size; st.total = src.size; st.err = '';
-      st.ms = await sampleMs(v.file, v.pk); st.msFolder = await sampleMs(src.file, v.pk);
+      st.ms = await sampleMs(v.file, v.pk); st.msFolder = src.file ? await sampleMs(src.file, v.pk) : null;
       // the whole-blob copy an older build kept in IndexedDB is no longer needed
       try { var old = await DB.get('kv', K.key + bucket); if (old && old.blob) await DB.del('kv', K.key + bucket); } catch (e) {}
       if (_bucket === bucket) { K.pk = null; await usePack(K, bucket, v.file); if (K.pk) K.pk.opfs = true; refreshStatus(); }
       return true;
     } catch (e) {
       st.err = 'check failed: ' + ((e && e.message) || e); st.done = false;
+      /* desk-p54: the server could not be reached for the check (signal gone, old link): the copy stays; the next tick re-reads
+         its last 16 MB and checks again. Only a real mismatch throws the copy away. */
+      if (/server read/.test(String(e && e.message))) { delete NET[name]; st.wait = 'asks the server again'; return false; }
       try { await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: false, at: Date.now() }); } catch (x) {}
       try { await (await opDir()).removeEntry(name); } catch (x) {}   // copy it again from the start next time
       return false;
@@ -437,6 +497,18 @@
         try { await dir.removeEntry(ent); await DB.del('kv', 'opfs:' + ent); delete OP.st[ent]; } catch (e) {}
       } } catch (e) {}
   }
+  // desk-p54: is the copy already in Chrome still the one to keep? Same file = yes. A copy made by the other route (folder
+  // vs server) of the same size = yes (not copied twice). The county ON THE MAP is never torn down for a server file:
+  // its copy keeps drawing (a newer server pack is copied once that county is no longer on the map).
+  function keepDone(m, src, sig, b) {
+    if (!sig || m.sig === sig) return true;
+    if (src && src.net && b === _bucket) return true;
+    return !!src && m.total === src.size && (m.via || 'folder') !== (src.net ? 'server' : 'folder');
+  }
+  // a server copy runs over whatever internet the laptop has (often the driver's hotspot): on a driving day (camera checked
+  // in during the last 10 minutes) it goes only between parcels like any copy, and slower (1 s rest per 8 MB piece);
+  // parked, after the drive and overnight at full speed
+  function netGap() { return camRecent() ? 1000 : 0; }
   async function copyTick() {
     if (!OP.ok || OP.busy) return;
     OP.busy = true;
@@ -447,14 +519,16 @@
       for (var i = 0; i < list.length; i++) {
         var b = list[i][0], K = list[i][1], name = b + K.file, st = OP.st[name] = OP.st[name] || { copied: 0, total: 0 };
         var src = null; try { src = await sourceFile(b, K); } catch (e) {}
-        var m = await opMeta(name), sig = src && src.file ? src.size + ':' + src.mod : '';
-        if (m && m.done && (!sig || m.sig === sig) && await opDone(name)) {   // complete (with no folder, the copy is all there is)
+        var m = await opMeta(name), sig = src && (src.file || src.net) ? src.size + ':' + src.mod : '';
+        if (m && m.done && keepDone(m, src, sig, b) && await opDone(name)) {   // complete (with no folder, the copy is all there is)
           st.done = true; st.total = st.copied = m.total; st.wait = ''; st.err = '';
           if (st.ms == null && b === _bucket && K.pk && K.pk.opfs) st.ms = await sampleMs(K.pk.blob, K.pk);
           continue;
         }
         st.done = false;
-        if (!src || !src.file) { st.wait = window.__DESK_MOCK ? 'mock' : (m ? 'folder needs a tap' : 'no folder'); st.total = st.total || (m && m.total) || 0; continue; }
+        if (!src || !(src.file || src.net)) { var nw = (NET[name] && NET[name].why) ? ' · server: ' + NET[name].why : '';
+          st.wait = window.__DESK_MOCK && !window._deskPackLink ? 'mock' : (m ? 'folder needs a tap' : 'no folder') + nw; st.total = st.total || (m && m.total) || 0; continue; }
+        st.via = src.net ? 'server' : 'folder';
         st.total = src.size;
         if (st.copied == null || (!st.copied && m && m.sig === sig)) { try { st.copied = (await (await (await opDir()).getFileHandle(name)).getFile()).size; } catch (e) { st.copied = 0; } }
         if (st.wait === 'low disk' && Date.now() - OP.lowAt < 10 * 60000) break;
@@ -545,7 +619,7 @@
         streets: { open: !!S.pk, inPlace: !!(S.pk && S.pk.inPlace), opfs: !!(S.pk && S.pk.opfs), needsFolder: !!S.needsFolder, saving: !!S.saving },
         chrome: OP.ok ? { store: storeLine(), packs: (function () { var o = {}; Object.keys(OP.st).forEach(function (n) { var x = OP.st[n];
           o[n.replace(/\./g, '_')] = { copied: x.copied || 0, total: x.total || 0, done: !!x.done, ms: x.ms == null ? null : x.ms, msFolder: x.msFolder == null ? null : x.msFolder,
-            secs: x.secs || 0, wait: x.wait || '', err: x.err || '' }; }); return o; })() } : { store: storeLine() },
+            secs: x.secs || 0, wait: x.wait || '', err: x.err || '', via: x.via || '' }; }); return o; })() } : { store: storeLine() },
         speed: window.SpeedLim ? { loaded: window.SpeedLim.loaded(), segs: window.SpeedLim.count() } : null };
       var sig = JSON.stringify(o); if (sig === _repSig && Date.now() - _repAt < 300000) return;
       if (Date.now() - _repAt < 20000 && sig !== _repSig && _repSig) return;   /* a copy in progress: at most every 20 s */
@@ -592,6 +666,7 @@
     // TEST ONLY: a File stands in for the folder file; a free-space figure stands in for the disk's
     _testSource: function (kind, bucket, file) { _testSrc[bucket + P[kind].file] = file; },
     _testFree: function (n) { OP.testFree = n; },
+    _netForget: function () { NET = {}; },
     _readInPlace: function (kind, file) { var K = P[kind]; return readInPlace(K, _bucket, { file: file, size: file.size, mod: String(file.lastModified), handle: null }); }
   };
 })();
