@@ -943,7 +943,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p58';
+var DESK_BUILD = 'desk-p59';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1525,6 +1525,21 @@ function applyPhotoCounts(){
   else Object.keys(_photoCountsRaw).forEach(function(k){ if (state.logs[k] && !_isForeignLog(k, state.logs[k])) out[k] = _photoCountsRaw[k]; });
   _photoCounts = out || {};
 }
+// ── THE MAP FOLLOWS THE SESSION'S COUNTY (desk-p59, RF 10/31) ─────────────────────────────────────────────────────
+// Only a move made elsewhere (the server's close hand-off): while this desk is still publishing its own county, the
+// session can name the old one for a moment, so nothing happens until this desk's own publish has landed.
+var _followT = null;
+function _followSessionCounty(v){
+  try {
+    if (LOOK) return;
+    var sb = String(v || '').split('/').filter(Boolean).pop() || '', cur = state.job && state.job.bucket;
+    if (!sb || !cur || sb === cur || _jobPublishing || _jobPublishedFor !== _jobSig()) return;
+    clearTimeout(_followT);
+    if (_camOpen) { _followT = setTimeout(function(){ _followSessionCounty(v); }, 5000); return; }
+    if (window._todayOpen) Promise.resolve(window._todayOpen(sb)).then(function(ok){ if (!ok) console.log('[desk] session moved to ' + sb + ': not saved on this laptop'); }).catch(function(){});
+  } catch (e) {}
+}
+window._followSessionCounty = _followSessionCounty;
 function wireListeners(){
   link.on('logs', function(v){
     var logs = v || {}, keep = {};
@@ -1545,6 +1560,9 @@ function wireListeners(){
     try { var u = new URL(location.href); u.searchParams.delete('look'); location.replace(u.toString()); } catch (e) { location.reload(); }
   });
   link.on('shipped', function(v){ _shippedSeqs = v || {}; rebuildLogs(); cacheSnapshots(); renderAll(); });
+  /* desk-p59 (RF 10/31 11:59, Richland): the server closed the county under the open map at its last client ship and moved
+     the session to today's next county. The map follows it between parcels, from the copy saved here: no reload. */
+  link.on('jobFolder', function(v){ _followSessionCounty(v); });
   /* desk-p53: the camera's seq can also arrive on the camera line (see _camActiveIn below); one handler for both */
   link.on('active', function(v){ _camActiveIn(v, 'sdk'); });
   link.on('hbCam', function(v){ if (v && v !== _camHbLast) { _camHbLast = v; _camHbSeenAt = Date.now(); _hbHeardAt = Date.now(); _lsnW.n = 0; renderLink(); } });
@@ -1886,6 +1904,8 @@ setInterval(_lsnWatch, 15000);
 window.__deskPingExtra = function(stage){
   var o = {};
   try { var k = localStorage.getItem('lhv_driver_key'); if (k) o.key = k; } catch (e) {}
+  /* desk-p59 (MT 10/31 6:17 PM): an Ask Claude question that could not reach askClaude rides this ping until the server acks it */
+  try { if (window.__askOutbox && window.__askOutbox.q) o.askQ = window.__askOutbox; } catch (e) {}
   try { if (state.job && state.job.bucket && link && Date.now() - _lsnW.knownAt > 25000) { _lsnW.knownAt = Date.now();
     /* desk-p53: a close counts as known only once it is rated here, so a stalled listener's missing rating comes by the ping too */
     var kn = {}; Object.keys(_rawClosed).forEach(function(x){ var l = (_serverLogs || {})[x]; if (!l || _pingSettled(l)) kn[x] = 1; });
@@ -1908,6 +1928,7 @@ window.__deskPingReply = function(j){
       /* the camera IS checking in: the screen says so even while the listener is catching up */
       if (_lsnW.srvHbAge < 60000) _camHbSeenAt = Math.max(_camHbSeenAt, Date.now() - _lsnW.srvHbAge); }
     if (j.cmd && window.__deskCmdIn) { _lsnW.cmdIn++; window.__deskCmdIn(j.cmd, 'ping'); }
+    if (j.askAck && window.__askAck) window.__askAck(j.askAck);
     if (j.askReply && window.__askReplyIn) { _lsnW.askIn++; window.__askReplyIn(j.askReply); }
     if (j.logs && typeof j.logs === 'object' && state.job) {
       var n = 0, old = 0;
@@ -3447,7 +3468,8 @@ document.addEventListener('pointerdown', async function(){
   if (_folderAsk) return; _folderAsk = true;
   try {
     var dir = await DB.get('kv', 'dirHandle'); if (!dir) return;
-    if ((await dir.queryPermission({ mode: 'read' })) !== 'granted' && (await dir.requestPermission({ mode: 'read' })) !== 'granted') return;
+    /* desk-p59: never a permission bubble on a tap (no driver ever acts for this); a permission Chrome still holds is used */
+    if ((await dir.queryPermission({ mode: 'read' })) !== 'granted') return;
     var ok = await SpeedLim.reload();
     try { if (window.DeskImagery && DeskImagery.reloadStreets) DeskImagery.reloadStreets(); } catch (e) {}
     toast('County folder reopened' + (ok ? ' · speed limits on' : ''), 3000);
@@ -4557,12 +4579,12 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     if (_camHbSeenAt && Date.now() - _camHbSeenAt < 10 * 60000) return false;
     return navigator.onLine !== false && document.visibilityState !== 'hidden'; } catch (e) { return false; } }
   async function granted(h){ try { return (await h.queryPermission({ mode: 'read' })) === 'granted'; } catch (e) { return false; } }
-  async function folderFile(B, name){   // → handle | 'no folder' | 'needs a tap' | 'not in folder'
+  async function folderFile(B, name){   /* → handle | 'no folder' | 'folder closed' | 'not in folder' */
     var dir = null, root = null, any = false;
     try { dir = await DB.get('kv', 'dirHandle'); } catch (e) {}
-    if (dir && dir.name === B) { any = true; if (!(await granted(dir))) return 'needs a tap'; try { return await dir.getFileHandle(name); } catch (e) {} }
+    if (dir && dir.name === B) { any = true; if (!(await granted(dir))) return 'folder closed'; try { return await dir.getFileHandle(name); } catch (e) {} }
     try { root = await DB.get('kv', 'imageryRoot'); } catch (e) {}
-    if (root) { any = true; if (!(await granted(root))) return 'needs a tap';
+    if (root) { any = true; if (!(await granted(root))) return 'folder closed';
       var sub = null; if (root.name === B) sub = root; else { try { sub = await root.getDirectoryHandle(B); } catch (e) {} }
       if (sub) { try { return await sub.getFileHandle(name); } catch (e) {} } }
     return any ? 'not in folder' : 'no folder';

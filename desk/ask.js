@@ -72,30 +72,64 @@
       else if (/^REOPEN:\d+$/.test(action || '')) { close(); select(String(action.slice(7))); setTimeout(function(){ actReopen(); }, 300); }
     } catch (e) { try { toast('Could not run that here: ' + (e && e.message || e), 4000); } catch (e2) {} }
   }
+  // ── NEVER HANGS (desk-p59, MT 10/31 6:13-6:17 PM, Stark ship check): five taps, every askClaude fetch failed on the
+  // hotspot ("Failed to fetch") and not one reached the server, while the 30-s office ping still got through. The box
+  // sat on "Heard, give me a second." for good. Now: one 20-s budget (sign-in token + request), the same function's
+  // second address if the first fails, and then the question rides the office ping (desk key, no sign-in needed) to the
+  // server, which answers it into askReply; that answer shows here by itself. The driver always sees a clear sentence.
+  var ASK_URL2 = 'https://askclaude-b556olotwq-uc.a.run.app/';
+  var ASK_MS = (function(){ try { var v = Number(new URLSearchParams(location.search).get('askms')); return v > 0 ? v : 20000; } catch (e) { return 20000; } })();
+  var BACKUP_SAY = 'Your signal is weak, so your question went by the backup line. The answer shows here by itself, usually within a minute. Nothing to do.';
+  var OFFLINE_SAY = 'No internet on the laptop right now. Your question goes out by itself the moment the signal is back, and the answer shows here. Nothing to do.';
+  window.__askOutbox = null;
+  var _pumpT = null;
+  function viaPing(q, why, offline){
+    var o = window.__askOutbox = { id: 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), q: String(q).slice(0, 600), at: Date.now() };
+    st.viaPing = (st.viaPing || 0) + 1; st.lastErr = why || st.lastErr; st.outboxAt = o.at;
+    var a = $('askc-a').querySelector('.a'); if (a) { a.textContent = offline ? OFFLINE_SAY : BACKUP_SAY; a.style.color = ''; }
+    say(offline ? 'No signal right now. Your question goes out by itself when it is back.' : 'Your signal is weak. Your question went by the backup line. The answer shows here by itself.');
+    var meta = $('askc-a').querySelector('.meta'); if (!meta) { var d = document.createElement('div'); d.className = 'meta'; try { $('askc-a').querySelector('.askc-qa').appendChild(d); meta = d; } catch (e) {} }
+    if (meta) meta.textContent = 'Claude · backup line (' + String(why || 'no answer').slice(0, 60) + ')';
+    if (_pumpT) clearInterval(_pumpT);
+    var send = function(){ var x = window.__askOutbox; if (!x) { clearInterval(_pumpT); _pumpT = null; return; }
+      if (Date.now() - x.at > 25 * 60000) { window.__askOutbox = null; clearInterval(_pumpT); _pumpT = null; return; }   /* the server refuses older than 30 min */
+      try { if (window.__deskPing) window.__deskPing('ask', {}); } catch (e) {} };
+    send(); _pumpT = setInterval(send, 10000);   /* again every 10 s until the server says it has it (askAck) */
+  }
+  window.__askAck = function(id){ try { if (window.__askOutbox && window.__askOutbox.id === id) { window.__askOutbox = null; st.ackAt = Date.now(); } } catch (e) {} };
+  var _netErr = function(e){ var m = String(e && (e.name === 'AbortError' ? 'timeout' : e.message) || e); return /timeout|fetch|network|failed|load failed|abort/i.test(m) || navigator.onLine === false; };
+  function postAsk(url, tok, q, ms){
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { if (ac) ac.abort(); } catch (e) {} }, ms);
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: tok, question: q, drv: AS || undefined }), signal: ac ? ac.signal : undefined })
+      .then(function(r){ return r.json().catch(function(){ return { ok: false, error: 'HTTP ' + r.status }; }); })
+      .then(function(j){ clearTimeout(tm); return j; }, function(e){ clearTimeout(tm); throw (e && e.name === 'AbortError') ? new Error('timeout') : e; });
+  }
   function askServer(q){
     open();
     if (String(q || '').replace(/[^a-z0-9]/gi, '').length < 4) { $('askc-listen').textContent = 'Didn\'t catch a question. Tap the button and ask about your day.'; return; }   // nothing empty ever goes to the server
     var now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     $('askc-a').innerHTML = '<div class="askc-qa"><div class="q">You asked, ' + now + ': “' + String(q).replace(/[<>]/g, '') + '”</div><div class="a" style="color:#f0b49c">Heard, give me a second.</div></div>';
     say('Heard, give me a second.');
-    if (navigator.onLine === false) { $('askc-a').querySelector('.a').textContent = 'Heard. No internet on the laptop right now — your question goes out the moment the signal is back.'; say('No signal right now. I will answer as soon as it is back.'); pending = q; return; }
-    var user = (window.firebase && firebase.auth && firebase.auth().currentUser) || null;
-    if (!user) { $('askc-a').querySelector('.a').textContent = 'Heard, give me a second. The laptop is still signing in; ask again in a moment.'; return; }
-    var t0 = Date.now(), slow = setTimeout(function(){ var a = $('askc-a').querySelector('.a'); if (a) a.textContent = 'Still checking…'; say('Still checking.'); }, 10000);
     st.lastSent = Date.now();
-    user.getIdToken().then(function(tok){
-      return fetch(ASK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: tok, question: q, drv: AS || undefined }) });
-    }).then(function(r){ return r.json(); }).then(function(j){
-      clearTimeout(slow);
-      if (!j || !j.ok) { render(q, 'Heard, give me a second.', null, 'Claude · the server did not answer (' + ((j && j.error) || 'no answer') + '); it comes back shortly'); return; }
-      st.lastOk = Date.now(); st.lastErr = ''; if (askServer._triesBy) delete askServer._triesBy[q];   // this question's retries start over (audit r7)
+    if (navigator.onLine === false) { viaPing(q, 'offline', true); return; }
+    var user = (window.firebase && firebase.auth && firebase.auth().currentUser) || null;
+    if (!user) { viaPing(q, 'not signed in yet'); return; }
+    var t0 = Date.now(), done = false, end = t0 + ASK_MS;
+    var slow = setTimeout(function(){ if (done) return; var a = $('askc-a').querySelector('.a'); if (a) a.textContent = 'Still checking…'; say('Still checking.'); }, Math.min(8000, ASK_MS / 2));
+    var fin = function(){ done = true; clearTimeout(slow); clearTimeout(cap); };
+    /* the hard cap: whatever is still pending (a hung sign-in token, a request the hotspot never answers) ends here */
+    var cap = setTimeout(function(){ if (done) return; fin(); viaPing(q, 'no answer in ' + Math.round(ASK_MS / 1000) + ' s'); }, ASK_MS + 500);
+    var tokP = new Promise(function(res, rej){ var tt = setTimeout(function(){ rej(new Error('timeout (sign-in token)')); }, Math.max(3000, ASK_MS / 3)); user.getIdToken().then(function(t){ clearTimeout(tt); res(t); }, function(e){ clearTimeout(tt); rej(e); }); });
+    tokP.then(function(tok){
+      var left = function(){ return Math.max(2000, end - Date.now()); };
+      return postAsk(ASK_URL, tok, q, Math.max(2000, left() * 0.55)).then(null, function(e){
+        if (!_netErr(e) || done) throw e; st.alt = (st.alt || 0) + 1; return postAsk(ASK_URL2, tok, q, left()); });
+    }).then(function(j){
+      if (done) return; fin();
+      if (!j || !j.ok) { st.lastErr = 'server: ' + String((j && j.error) || 'no answer').slice(0, 50); viaPing(q, 'server: ' + ((j && j.error) || 'no answer')); return; }
+      st.lastOk = Date.now(); st.lastErr = '';
       render(q, j.say, j.action, 'Claude · checked your laptop, camera and the live file · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' + (AS ? ' · as ' + AS : ''));
-    }).catch(function(e){ clearTimeout(slow); st.lastErr = 'send: ' + String(e && e.message || e).slice(0, 60); render(q, 'Heard, give me a second.', null, 'Claude · ' + String(e && e.message || e).slice(0, 80));
-      // a question is never dropped (full audit #5): kept and sent again when the link answers — on 'online' or in 30 s, up to 3 times
-      // only a NETWORK failure is re-sent (a server error already reached the office — no second answer); one copy in flight
-      try { var _net = /fetch|network|failed to fetch|load failed|abort/i.test(String(e && e.message || e)) || navigator.onLine === false;
-        if (_net && pending !== q) { pending = q; var _tm = (askServer._triesBy = askServer._triesBy || {}); var _tries = (_tm[q] = (_tm[q] || 0) + 1);   /* per question (audit r6) */
-          if (_tries <= 3) setTimeout(function(){ if (pending === q) { pending = null; askServer(q); } }, 30000); } } catch (e2) {} });
+    }).catch(function(e){ if (done) return; fin(); var m = String(e && e.message || e).slice(0, 60); st.lastErr = 'send: ' + m; viaPing(q, m); });
   }
   // ── THE OFFICE ANSWER (Dustin 10/26): a HOLD question is picked up by the Field App Claude; its answer lands in
   // sessions/<D>/askReply and shows up (and is spoken) in this same box, so the driver never has to look elsewhere.
@@ -113,7 +147,8 @@
     if (!(at > 0) || at <= lastReplyAt || at <= seenAt()) return; lastReplyAt = at;
     if (Date.now() - at > REPLY_FRESH_MS) { markSeen(at); st.replyOld = at; return; }   /* an old answer never pops by itself */
     markSeen(at);
-    open(); render(v.q || 'your question', v.say || '', v.action || null, 'Claude · answered by the office'); st.replyAt = at; } catch (e) {} }
+    try { if (window.__askOutbox && (v.id === window.__askOutbox.id || at >= window.__askOutbox.at)) window.__askOutbox = null; } catch (e) {}
+    open(); render(v.q || 'your question', v.say || '', v.action || null, v.via === 'ping' ? 'Claude · answered over the backup line' : 'Claude · answered by the office'); st.replyAt = at; } catch (e) {} }
   window.__askReplyIn = replyIn;
   function watchReplies(){
     try { if (!window.link || !link.on || watchReplies.done) return; watchReplies.done = true;
@@ -121,8 +156,8 @@
     } catch (e) {}
   }
   setInterval(watchReplies, 3000);
-  var pending = null;
-  window.addEventListener('online', function(){ if (pending) { var q = pending; pending = null; askServer(q); } });
+  /* back online: a question still waiting goes out on the next ping at once (the 10-s pump carries it after that) */
+  window.addEventListener('online', function(){ try { if (window.__askOutbox && window.__deskPing) window.__deskPing('ask', {}); } catch (e) {} });
 
   function listen(){
     open();

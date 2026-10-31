@@ -244,8 +244,10 @@
     } finally { clearTimeout(tm); }
   }
   async function netSource(bucket, K) {
-    if (!OP.ok || window.__DESK_MOCK && !window._deskPackLink || navigator.onLine === false) return null;
+    if (!OP.ok || window.__DESK_MOCK && !window._deskPackLink) return null;
     var name = bucket + K.file, c = NET[name];
+    /* desk-p59: no signal is said as such (MT 10/31 sat at "12% folder needs a tap" while the hotspot was down) */
+    if (sigNow() === 'no signal') { NET[name] = Object.assign({}, c || { at: 0 }, { why: 'no signal' }); if (!(c && c.r && c.r.link)) NET[name].at = 0; return null; }
     if (!c || Date.now() - c.at > (c.r && c.r.link ? 3 * 3600e3 : 120000)) {
       var r = null; try { r = await packLink(bucket, K); } catch (e) { r = { err: String((e && e.message) || e).slice(0, 60) }; }
       c = NET[name] = { at: Date.now(), r: r || { err: 'no answer' } };
@@ -258,8 +260,9 @@
   async function netRead(bucket, K, a, b) {   // bytes [a, b) of the server's pack; one fresh link if the old one has run out
     for (var t = 0; t < 2; t++) {
       var c = NET[bucket + K.file], u = c && c.r && c.r.link;
-      if (u) { try { var r = await fetch(u, { headers: { Range: 'bytes=' + a + '-' + (b - 1) }, cache: 'no-store' });
-        if (r.status === 206 || (r.status === 200 && a === 0)) { var buf = await r.arrayBuffer(); return buf.byteLength > b - a ? buf.slice(0, b - a) : buf; } } catch (e) {} }
+      if (u) { var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { try { ac && ac.abort(); } catch (e) {} }, 60000);
+        try { var r = await fetch(u, { headers: { Range: 'bytes=' + a + '-' + (b - 1) }, cache: 'no-store', signal: ac ? ac.signal : undefined });
+        if (r.status === 206 || (r.status === 200 && a === 0)) { var buf = await r.arrayBuffer(); return buf.byteLength > b - a ? buf.slice(0, b - a) : buf; } } catch (e) {} finally { clearTimeout(tm); } }
       delete NET[bucket + K.file]; await netSource(bucket, K);
     }
     throw new Error('server read');
@@ -321,6 +324,8 @@
      FileSystemFileHandle), so testing for it here turned the copy off everywhere. The worker reports if it is missing. */
   var OP = { ok: !!(navigator.storage && navigator.storage.getDirectory && window.Worker && window.FileSystemFileHandle) && !window.LOOK,
     st: {}, busy: false, w: null, persist: null, est: null, tileErr: 0, lowAt: 0, kick: 0, testFree: null };
+  /* desk-p59: a browser that shows Chrome's storage but refuses it (WebKit private windows: UnknownError) keeps live imagery */
+  if (OP.ok) { try { navigator.storage.getDirectory().catch(function () { OP.ok = false; }); } catch (e) { OP.ok = false; } }
   var RESERVE = 1.5 * 1024 * 1024 * 1024;   // always leave this much of Chrome's allowance free
   async function opDir() { var r = await navigator.storage.getDirectory(); return r.getDirectoryHandle('packs', { create: true }); }
   async function opMeta(name) { try { return (await DB.get('kv', 'opfs:' + name)) || null; } catch (e) { return null; } }
@@ -331,27 +336,60 @@
     try { await DB.put('kv', 'opfs:' + name, Object.assign({}, m, { done: false })); } catch (e) {}   // gone or short: copy again
     return null;
   }
+  // ── SIGNAL (desk-p59, MT 10/31: Morrow's aerials stuck at 12%) ──
+  // A copy from the server goes only on a usable signal: none, Chrome's own estimate of 2G / a 1.5 s round trip / under
+  // 0.4 Mbps, or the last pieces arriving under 50 KB/s = paused (3 min after a slow piece), resumed by itself when the
+  // signal is back. While the live map is loading tiles (the driver panning or zooming) the copy holds between pieces.
+  var SIG = { slowUntil: 0, kbs: null, test: null };
+  function sigNow() {
+    if (SIG.test) { try { var t = SIG.test(); if (t != null) return t; } catch (e) {} }
+    if (navigator.onLine === false) return 'no signal';
+    if (Date.now() < SIG.slowUntil) return 'weak signal';
+    var c = navigator.connection;
+    if (c) { if (/^(slow-2g|2g)$/.test(String(c.effectiveType || ''))) return 'weak signal';
+      if (c.rtt && c.rtt >= 1500) return 'weak signal'; if (c.downlink && c.downlink < 0.4) return 'weak signal'; }
+    return '';
+  }
+  function mapBusy() { try { var busy = false, m = window.map; if (!m || !m.eachLayer) return false;
+    m.eachLayer(function (l) { if (l && l._loading && l._url) busy = true; }); return busy; } catch (e) { return false; } }
+  function sigWait(w) { return w === 'no signal' ? 'waits for signal' : 'waits for signal (weak)'; }
   // THE WORKER: one file at a time, 8 MB pieces, written in place at their offset (so a stop resumes from the
   // copy's own size). 'pause' stops it between pieces; 'gap' sets the rest between pieces (0 when the map is idle).
   var WSRC = [
-    'var stop = {}, gap = {};',
+    'var stop = {}, gap = {}, mult = {}, hold = {};',
     '/* desk-p54: one 8 MB piece of the server\'s pack by HTTP Range; a dropped piece is asked again (4 tries), a refused link ends the copy */',
-    'async function piece(url, a, b) {',
+    '/* desk-p59 (MT 10/31: Morrow sat at 0.03G "copying" for 30+ min on desk-p58 = a request the hotspot left hanging, never',
+    '   ended): the body is read as it arrives; no bytes for STALL ms (30 s), or a pause, drops the request and it is asked again */',
+    'var STALL = 30000;',
+    'async function piece(url, a, b, name) {',
     '  for (var t = 0; ; t++) {',
-    '    var r = null;',
-    '    try { r = await fetch(url, { headers: { Range: "bytes=" + a + "-" + (b - 1) }, cache: "no-store" }); } catch (e) { r = null; }',
-    '    if (r && (r.status === 206 || (r.status === 200 && a === 0))) {',
-    '      try { var u = new Uint8Array(await r.arrayBuffer()); if (u.length >= b - a) return u.length > b - a ? u.subarray(0, b - a) : u; } catch (e) {}',
-    '    } else if (r && r.status >= 400 && r.status < 500) throw new Error("link HTTP " + r.status);',
+    '    if (stop[name]) return null;',
+    '    var r = null, out = null, n = 0, ac = new AbortController(), seen = Date.now();',
+    '    var dog = setInterval(function () { if (stop[name] || Date.now() - seen > STALL) { try { ac.abort(); } catch (x) {} } }, 500);',
+    '    try {',
+    '      r = await fetch(url, { headers: { Range: "bytes=" + a + "-" + (b - 1) }, cache: "no-store", signal: ac.signal });',
+    '      if (r.status === 206 || (r.status === 200 && a === 0)) {',
+    '        var rd = r.body.getReader(); out = new Uint8Array(b - a);',
+    '        while (n < b - a) { var x = await rd.read(); if (x.done) break; seen = Date.now();',
+    '          var k = Math.min(x.value.length, b - a - n); out.set(x.value.subarray(0, k), n); n += k; }',
+    '        if (n >= b - a) { try { rd.cancel(); } catch (x) {} }',
+    '      }',
+    '    } catch (e) { r = r || null; }',
+    '    clearInterval(dog);',
+    '    if (out && n >= b - a) return out;',
+    '    if (stop[name]) return null;',
+    '    if (r && r.status >= 400 && r.status < 500) throw new Error("link HTTP " + r.status);',
     '    if (t >= 3) throw new Error("network: piece at " + a + " failed 4 times");',
-    '    await new Promise(function (res) { setTimeout(res, 2000 * Math.pow(2, t)); });',
+    '    for (var w = 0; w < 4 * Math.pow(2, t) && !stop[name]; w++) await new Promise(function (res) { setTimeout(res, 500); });',
     '  }',
     '}',
     'onmessage = async function (e) { var m = e.data;',
     '  if (m.op === "pause") { stop[m.name] = 1; return; }',
-    '  if (m.op === "gap") { gap[m.name] = m.gap; return; }',
+    '  if (m.op === "gap") { gap[m.name] = m.gap; mult[m.name] = m.mult || 0; return; }',
+    '  if (m.op === "hold") { hold[m.name] = !!m.on; return; }',
     '  if (m.op !== "copy") return;',
-    '  stop[m.name] = 0; gap[m.name] = m.gap || 0;',
+    '  stop[m.name] = 0; gap[m.name] = m.gap || 0; mult[m.name] = m.mult || 0; hold[m.name] = !!m.hold; if (m.stall) STALL = m.stall;',
+    '  var CH = m.chunk || 8388608;',
     '  var h = null, pos = 0, last = 0;',
     '  try {',
     '    var root = await navigator.storage.getDirectory(), dir = await root.getDirectoryHandle("packs", { create: true });',
@@ -360,23 +398,29 @@
     '    var size = m.file ? m.file.size : m.size;',
     '    pos = h.getSize();',
     '    if (m.fresh || pos > size) { h.truncate(0); pos = 0; }',
-    '    else pos = Math.max(0, pos - 16777216);',
+    '    else if (!(m.clean != null && m.clean === pos)) pos = Math.max(0, pos - 16777216);',
+    '    /* desk-p59: a copy that ended cleanly (paused, flushed, closed) resumes at its own end: nothing is fetched twice */',
     '    postMessage({ name: m.name, pos: pos });',
     '    while (pos < size) {',
     '      if (stop[m.name]) break;',
-    '      var end = Math.min(size, pos + 8388608), buf = m.file ? new Uint8Array(await m.file.slice(pos, end).arrayBuffer()) : await piece(m.url, pos, end);',
+    '      while (hold[m.name] && !stop[m.name]) await new Promise(function (r) { setTimeout(r, 500); });',
+    '      if (stop[m.name]) break;',
+    '      var end = Math.min(size, pos + CH), t0 = Date.now(), buf = m.file ? new Uint8Array(await m.file.slice(pos, end).arrayBuffer()) : await piece(m.url, pos, end, m.name), ms = Date.now() - t0;',
+    '      if (buf === null) break;',
     '      if (!buf.length) throw new Error("short read");',
     '      var n = h.write(buf, { at: pos });',
     '      if (n !== buf.length) throw new Error("short write");',
     '      pos += n;',
-    '      if (Date.now() - last > 1000) { h.flush(); last = Date.now(); postMessage({ name: m.name, pos: pos }); }',
-    '      if (gap[m.name]) await new Promise(function (r) { setTimeout(r, gap[m.name]); });',
+    '      if (Date.now() - last > 1000) { h.flush(); last = Date.now(); if (m.file) postMessage({ name: m.name, pos: pos }); }',
+    '      if (!m.file) postMessage({ name: m.name, pos: pos, piece: { bytes: n, ms: ms } });',
+    '      var rest = Math.max(gap[m.name] || 0, (mult[m.name] || 0) * ms), until = Date.now() + rest;',
+    '      while (Date.now() < until && !stop[m.name]) await new Promise(function (r) { setTimeout(r, Math.min(500, until - Date.now())); });',
     '    }',
     '    h.flush(); h.close(); h = null;',
-    '    postMessage({ name: m.name, pos: pos, end: true, done: pos >= size });',
+    '    postMessage({ name: m.name, pos: pos, end: true, done: pos >= size, clean: pos });',
     '  } catch (err) {',
-    '    try { if (h) { h.flush(); pos = h.getSize(); h.close(); } } catch (x) {}',
-    '    postMessage({ name: m.name, pos: pos, end: true, err: String((err && err.name) || "Error") + ": " + String((err && err.message) || err).slice(0, 120) });',
+    '    var cl = null; try { if (h) { h.flush(); pos = h.getSize(); h.close(); cl = pos; } } catch (x) {}',
+    '    postMessage({ name: m.name, pos: pos, end: true, clean: /short write|Quota|space/i.test(String(err && err.message)) ? null : cl, err: String((err && err.name) || "Error") + ": " + String((err && err.message) || err).slice(0, 120) });',
     '  }',
     '};'
   ].join('\n');
@@ -385,6 +429,8 @@
     if (OP.w) return OP.w;
     OP.w = new Worker(URL.createObjectURL(new Blob([WSRC], { type: 'application/javascript' })));
     OP.w.onmessage = function (e) { var d = e.data || {}, st = OP.st[d.name]; if (st) st.copied = d.pos;
+      if (d.piece && d.piece.ms > 0) { SIG.kbs = Math.round(d.piece.bytes / d.piece.ms); if (st) st.kbs = SIG.kbs;
+        if (d.piece.bytes >= 262144 && SIG.kbs < 50) SIG.slowUntil = Date.now() + 3 * 60000; }
       if (d.end && _wait[d.name]) { var r = _wait[d.name]; delete _wait[d.name]; r(d); } };
     OP.w.onerror = function (e) { Object.keys(_wait).forEach(function (k) { var r = _wait[k]; delete _wait[k]; r({ end: true, err: 'worker: ' + ((e && e.message) || 'error') }); }); OP.w = null; };
     return OP.w;
@@ -444,16 +490,21 @@
       await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: false, at: Date.now(), via: src.net ? 'server' : 'folder' });
     }
     st.wait = ''; st.err = ''; st.copied = fresh ? 0 : have; st.copying = true; st.t0 = st.t0 || Date.now();
-    var t0 = Date.now(), w = worker(), gap = src.net ? netGap() : gapNow();
+    var t0 = Date.now(), w = worker(), gap = src.net ? netGap() : gapNow(), mult = src.net ? netMult() : 0, held = !!(src.net && mapBusy());
     var res = new Promise(function (r) { _wait[name] = r; });
     st.via = src.net ? 'server' : 'folder';
-    w.postMessage({ op: 'copy', name: name, file: src.file || null, url: src.net ? src.url : null, size: src.size, fresh: fresh, gap: gap });
+    w.postMessage({ op: 'copy', name: name, file: src.file || null, url: src.net ? src.url : null, size: src.size, fresh: fresh, gap: gap, mult: mult,
+      hold: held, stall: OP.stallMs || 30000, chunk: src.net && camRecent() ? 2097152 : 8388608, clean: fresh ? null : (m && m.clean != null ? m.clean : null) });
     wakeOn();
     var watch = setInterval(function () {
-      if (!idleNow()) { w.postMessage({ op: 'pause', name: name }); return; }
-      var g = src.net ? netGap() : gapNow(); if (g !== gap) { gap = g; w.postMessage({ op: 'gap', name: name, gap: g }); }
+      if (!idleNow() || (src.net && sigNow())) { w.postMessage({ op: 'pause', name: name }); return; }
+      var hb = !!(src.net && mapBusy()); if (hb !== held) { held = hb; w.postMessage({ op: 'hold', name: name, on: hb }); }
+      var g = src.net ? netGap() : gapNow(), u = src.net ? netMult() : 0;
+      if (g !== gap || u !== mult) { gap = g; mult = u; w.postMessage({ op: 'gap', name: name, gap: g, mult: u }); }
     }, 2000);
     var d = await res; clearInterval(watch); st.copying = false; wakeOff();
+    /* desk-p59: where a clean stop left the copy, so the next start continues there instead of 16 MB back */
+    try { var mm = await opMeta(name); if (mm && !mm.done) { mm.clean = d.clean == null ? null : d.clean; await DB.put('kv', 'opfs:' + name, mm); } } catch (e) {}
     st.secs = (st.secs || 0) + Math.round((Date.now() - t0) / 1000);
     if (d.err) {
       st.err = d.err;
@@ -463,7 +514,7 @@
       }
       return false;
     }
-    if (!d.done) { st.wait = 'waits for idle'; return false; }
+    if (!d.done) { var sw = src.net ? sigNow() : ''; st.wait = sw ? sigWait(sw) : 'waits for idle'; return false; }
     try {
       var v = await verify(name, src);
       await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: true, at: Date.now(), tiles: v.tiles, secs: st.secs, via: src.net ? 'server' : 'folder', from: src.from || '' });
@@ -509,6 +560,9 @@
   // in during the last 10 minutes) it goes only between parcels like any copy, and slower (1 s rest per 8 MB piece);
   // parked, after the drive and overnight at full speed
   function netGap() { return camRecent() ? 1000 : 0; }
+  /* desk-p59: on a driving day the rest after each piece is also 3x the time the piece took (the copy uses at most a quarter
+     of the hotspot's time, in 2 MB pieces), so the live map and the camera's uploads always come first */
+  function netMult() { return camRecent() ? 3 : 0; }
   async function copyTick() {
     if (!OP.ok || OP.busy) return;
     OP.busy = true;
@@ -526,13 +580,16 @@
           continue;
         }
         st.done = false;
-        if (!src || !(src.file || src.net)) { var nw = (NET[name] && NET[name].why) ? ' · server: ' + NET[name].why : '';
-          st.wait = window.__DESK_MOCK && !window._deskPackLink ? 'mock' : (m ? 'folder needs a tap' : 'no folder') + nw; st.total = st.total || (m && m.total) || 0; continue; }
+        if (!src || !(src.file || src.net)) { var why = (NET[name] && NET[name].why) || '';
+          /* desk-p59: never a folder question (no driver ever taps for this); the copy waits for the server by itself */
+          st.wait = window.__DESK_MOCK && !window._deskPackLink ? 'mock' : why === 'no signal' ? 'waits for signal' : 'server: ' + (why || 'not asked yet');
+          st.total = st.total || (m && m.total) || 0; continue; }
         st.via = src.net ? 'server' : 'folder';
         st.total = src.size;
         if (st.copied == null || (!st.copied && m && m.sig === sig)) { try { st.copied = (await (await (await opDir()).getFileHandle(name)).getFile()).size; } catch (e) { st.copied = 0; } }
         if (st.wait === 'low disk' && Date.now() - OP.lowAt < 10 * 60000) break;
         if (!idleNow()) { st.wait = 'waits for idle'; break; }
+        var sg = src.net ? sigNow() : ''; if (sg) { st.wait = sigWait(sg); continue; }
         var ok = await copyOne(b, K, src);
         if (!ok) break;   // paused, low disk or an error: try again on the next tick
       }
@@ -584,8 +641,9 @@
     var s = S.saving ? 'Streets map: saving for no signal…' : S.pk ? (S.pk.opfs ? 'Streets map saved on this laptop ✓ (whole county)' : 'Streets map saved for no signal ✓ (whole county' + where(S) + ')') : 'no streets map file';
     var i = I.saving ? 'Imagery: saving for no signal…' : I.pk ? (I.pk.opfs ? 'Aerials saved on this laptop ✓ (capture ' + esc(captureText(I.pk.meta || {})) + ')' : 'Imagery saved for no signal ✓ (capture ' + esc(captureText(I.pk.meta || {})) + where(I) + ')') : 'no imagery file';
     var out = s + '<br>' + i;
-    if (!window.__DESK_MOCK && window.showDirectoryPicker && (!I.pk || !S.pk || I.needsFolder || S.needsFolder))
-      out += '<br><a href="#" id="img-folder" style="color:var(--sky)">' + (I.needsFolder || S.needsFolder ? 'Allow the _IMAGERY folder again' : 'Choose the _IMAGERY folder…') + '</a>';
+    /* desk-p59: no folder link, ever (Dustin: never ask a driver to act). A pack not yet in Chrome is copied from the server
+       by itself; this line only says how far that is */
+    var pi = OP.st[(_bucket || '') + I.file]; if (!(I.pk && I.pk.opfs) && pi && pi.total && !pi.done) out += '<br>Aerials: saving to this laptop ' + Math.floor((pi.copied || 0) * 100 / pi.total) + '%';
     return out;
   }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -628,23 +686,13 @@
       window.link.set('deskPacks', o).catch(function () { _repSig = ''; });
     } catch (e) {}
   }
-  // AFTER A RELOAD CHROME FORGETS THE FOLDER PERMISSION, so a pack read in place from the folder
-  // silently stops drawing. The first tap or click on the page (a user gesture, which Chrome needs)
-  // asks for the folder again and reopens the packs. Chrome may offer "Allow on every visit".
-  var _regrantBusy = false;
-  document.addEventListener('pointerdown', async function () {
-    if (_regrantBusy || !_bucket || !(P.imagery.needsFolder || P.streets.needsFolder)) return;
-    _regrantBusy = true;
-    try {
-      var ok = false;
-      for (var k of ['dirHandle', 'imageryRoot']) {
-        var h = null; try { h = await DB.get('kv', k); } catch (e) {}
-        if (h && !(await granted(h))) { try { if ((await h.requestPermission({ mode: 'read' })) === 'granted') ok = true; } catch (e) {} }
-        else if (h) ok = true;
-      }
-      if (ok) { loadCounty(_bucket); API.toast('Saved imagery reopened from the folder', 3000); }
-    } finally { setTimeout(function () { _regrantBusy = false; }, 5000); }
-  }, true);
+  // AFTER A RELOAD CHROME FORGETS THE FOLDER PERMISSION. desk-p59 (MT 10/31): the page never asks for it again (no
+  // permission bubble on a tap). The packs come from Chrome's own copy, and a missing copy comes from the server by itself.
+  // If Chrome still holds the permission ("Allow on every visit"), it is noticed here, silently, once a minute.
+  setInterval(async function () {
+    if (!_bucket || !(P.imagery.needsFolder || P.streets.needsFolder)) return;
+    try { for (var k of ['dirHandle', 'imageryRoot']) { var h = await DB.get('kv', k); if (h && await granted(h)) { loadCounty(_bucket); return; } } } catch (e) {}
+  }, 60000);
 
   // ── HOOK ──
   function tick() {
@@ -667,6 +715,8 @@
     _testSource: function (kind, bucket, file) { _testSrc[bucket + P[kind].file] = file; },
     _testFree: function (n) { OP.testFree = n; },
     _netForget: function () { NET = {}; },
+    _testStall: function (ms) { OP.stallMs = ms || null; },
+    _testSignal: function (fn) { SIG.test = fn || null; SIG.slowUntil = 0; },
     _readInPlace: function (kind, file) { var K = P[kind]; return readInPlace(K, _bucket, { file: file, size: file.size, mod: String(file.lastModified), handle: null }); }
   };
 })();
