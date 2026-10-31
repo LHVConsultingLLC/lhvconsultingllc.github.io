@@ -84,7 +84,7 @@
   }
   function drawNames(ctx, G, paths, z, sz, onImagery) {
     var fs = z >= 17 ? 13.5 : z >= 15 ? 12.5 : 11.5;
-    ctx.font = '700 ' + fs + 'px -apple-system,Segoe UI,system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '700 ' + fs + 'px Inter,-apple-system,"Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     // the road file is split at every crossing, so a street is many short pieces: join each name's pieces end to end
     // (same point, same heading within ~20 degrees) into straight runs, then label the runs
     var byName = {};

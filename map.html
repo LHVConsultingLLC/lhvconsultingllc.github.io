@@ -57,6 +57,11 @@ try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations
 try { if (location.hostname === 'lhvconsultingllc.github.io' && /\/field-log\/desk\.html$/.test(location.pathname) && !/[?&]stay=1/.test(location.search)) location.replace('/map.html' + location.search + location.hash); } catch (e) {}</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- LEDGERSTONE TYPE (10/30, docs/brand/type.css): Cormorant Garamond + Inter from Google Fonts, never render-blocking. Asked for only
+     with signal, as a print sheet that switches on when it lands; no signal or a slow hotspot = the system face, same layout, nothing waits. -->
+<script>(function(){ try { if (navigator.onLine === false) return; var l = document.createElement('link'); l.rel = 'stylesheet'; l.media = 'print';
+  l.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap';
+  l.onload = function(){ l.media = 'all'; }; l.onerror = function(){ try { l.remove(); } catch (e) {} }; document.head.appendChild(l); } catch (e) {} })();</script>
 <title>LHV Field Log · Desk</title>
 <!-- ════════════════════════════════════════════════════════════════════════
      LHV FIELD LOG — DESK (laptop) · 2026-10-11 · build desk-p2 (go-live ready, not deployed)
@@ -81,7 +86,12 @@ if (window.__DESK_MOCK) document.write('<script src="desk/mock.js"><\/script>');
 <style>
 :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#232635;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);
   --text:#f0f0f0;--muted:#9a9eb6;--accent:#4f7cff;--success:#2ecc8a;--warning:#f5a623;--danger:#e84040;--sky:#29ABE2;
-  --radius:12px;--radius-sm:8px;--font-display:ui-rounded,-apple-system,'SF Pro Rounded','Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;
+  --radius:12px;--radius-sm:8px;
+  /* LEDGERSTONE TYPE (10/30, docs/brand/type.css): Cormorant Garamond = wordmark, headings, hero numbers (lining figures);
+     Inter = every line of text and data (numbers 600 + tabular figures). No signal = the system face (Segoe UI on the laptop). */
+  --serif:"Cormorant Garamond",Baskerville,Georgia,serif;
+  --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --font-display:var(--sans);
   --split:25%}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
@@ -107,9 +117,9 @@ button,.sbtn,.stat,.row,select,input{touch-action:manipulation}
   html body #order,html body #q{min-height:42px}
   html body .stat{min-height:52px}
 }
-body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:16px}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;font-variant-numeric:tabular-nums}
 button{font:inherit;color:inherit;cursor:pointer}
-kbd{font:700 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.12);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;color:#cfd3e6}
+kbd{font:600 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.12);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;color:#cfd3e6}
 
 #desk{display:grid;grid-template-columns:minmax(290px,var(--split)) 8px 1fr;grid-template-rows:100vh;height:100vh;width:100vw;overflow:hidden}
 #log{container-type:inline-size;container-name:log;display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;overflow-x:hidden;overflow-y:auto;background:var(--bg);border-right:1px solid var(--border)}
@@ -121,10 +131,10 @@ kbd{font:700 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.1
 
 /* ── LEFT: THE LOG ───────────────────────────────────────────────────────── */
 .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border)}
-.brand{font:800 15px var(--font-display);letter-spacing:.3px;white-space:nowrap}
+.brand{font:600 17px var(--serif);font-variant-numeric:lining-nums;letter-spacing:.3px;white-space:nowrap}
 .brand small{color:var(--muted);font-weight:600}
-.chip{font:800 13px var(--font-display);padding:3px 9px;border-radius:20px;border:1.5px solid var(--border2);white-space:nowrap}
-.pill{font:700 12.5px var(--font-display);padding:4px 9px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
+.chip{font:600 13px var(--font-display);padding:3px 9px;border-radius:20px;border:1.5px solid var(--border2);white-space:nowrap}
+.pill{font:600 12.5px var(--font-display);padding:4px 9px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
 .pill.ok{background:rgba(46,204,138,.14);color:var(--success);border-color:rgba(46,204,138,.4)}
 .pill.warn{background:rgba(245,166,35,.14);color:var(--warning);border-color:rgba(245,166,35,.45)}
 .pill.bad{background:rgba(232,64,64,.16);color:#ff9a9a;border-color:rgba(232,64,64,.5)}
@@ -133,13 +143,13 @@ kbd{font:700 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.1
 /* top row (Dustin 10/11): status as icons; county + drive-file date on the right; the old title row is gone */
 .topbar{flex-wrap:nowrap}
 .pill.ico{padding:0 7px;min-width:38px;height:26px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font:16px/1 "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif}
-.pill.ico b{font:800 13px var(--font-display)}
+.pill.ico b{font:600 13px var(--font-display)}
 .pill.ico.bad b{color:#ff7b7b;font-size:14px}
 html body #log .topbar #allclear.ok, html body #log .topbar #allclear.ok b{color:#3ee08f}
 html body #log .topbar #allclear.bad{color:#ff7b7b}
 /* TOP (Dustin 10/11): county + drive-file date CENTRED on line 1; every chip on a skinny line 2, centred */
 html body #desk #log .topbar{display:flex;flex-wrap:wrap!important;justify-content:center;align-items:center;gap:3px 4px;padding:4px 8px 5px}
-html body #desk #log .topbar .tb-job{flex:0 0 100%;text-align:center;font-size:17px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html body #desk #log .topbar .tb-job{flex:0 0 100%;text-align:center;font-size:20px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 html body #desk #log .topbar .tb-job small{font-size:13px;margin-left:5px}
 html body #desk #log .topbar .grow{display:none}
 html body #desk #log .topbar .chip{flex:0 0 auto;font-size:11px;padding:0 6px;height:20px;display:inline-flex;align-items:center}
@@ -149,24 +159,24 @@ html body #desk #log .topbar .pill.ico b{font-size:12px}
 /* photo uploads + SHIP live on the top line (Dustin 10/11): green ✓ = all up; red = the countdown of photos still uploading */
 html body #log .topbar #allclear{flex:0 0 auto;min-height:0;height:20px;padding:0 6px;border-radius:20px;white-space:nowrap;display:inline-flex;font:13px/1 "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif}
 html body #log .topbar #ship-btn{flex:0 0 auto;height:20px;min-height:20px!important;font-size:11px;padding:0 10px;margin-left:4px;border-radius:20px;width:auto!important}
-.tb-job{font:800 17px var(--font-display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.tb-job small{color:var(--muted);font-weight:700;font-size:14px;margin-left:6px}
+.tb-job{font:600 17px var(--serif);font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tb-job small{color:var(--muted);font:600 14px var(--sans);margin-left:6px}
 .title{display:none !important}
 .title{padding:6px 12px 0}
-.title h1{font:800 20px var(--font-display);line-height:1.15;overflow-wrap:anywhere}
+.title h1{font:600 22px var(--serif);font-variant-numeric:lining-nums;line-height:1.15;overflow-wrap:anywhere}
 .title .sub{color:var(--muted);font-size:11.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stale{margin:4px 12px 0;padding:6px 10px;border-radius:8px;background:#3a2a12;color:#ffd08a;font-size:13px;display:none}
 
 .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:6px 10px}
 .stat{background:var(--surface);border:1.5px solid transparent;border-radius:var(--radius-sm);padding:5px 2px;text-align:center;cursor:pointer;min-width:0}
 .stat:hover{border-color:var(--border2)}.stat.on{border-color:var(--accent);background:var(--surface2)}
-.stat .n{font:800 19px var(--font-display);font-variant-numeric:tabular-nums;line-height:1.1}
-.stat .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.2px;color:var(--muted);line-height:1.15}
+.stat .n{font:600 19px var(--font-display);font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.2px;color:var(--muted);line-height:1.15}
 .n.pending{color:#d7dbe8}.n.incomplete{color:var(--danger)}.n.uploading{color:var(--success)}.n.rating{color:var(--success)}.n.complete{color:#9aa1b8}   /* same meaning as the dots: green uploading, red needs something */.n.total{color:var(--sky)}
 
 .gate{margin:0 12px;display:flex;gap:8px;align-items:stretch}
-#allclear{flex:1;font:700 13px var(--font-display);padding:9px 10px;border-radius:var(--radius-sm);background:var(--surface);color:#c9d2e0;display:flex;align-items:center}
-#ship-btn{flex:0 0 auto;background:var(--success);color:#08130c;border:0;border-radius:var(--radius-sm);font:900 17px var(--font-display);padding:0 18px;letter-spacing:.5px}
+#allclear{flex:1;font:600 13px var(--font-display);padding:9px 10px;border-radius:var(--radius-sm);background:var(--surface);color:#c9d2e0;display:flex;align-items:center}
+#ship-btn{flex:0 0 auto;background:var(--success);color:#08130c;border:0;border-radius:var(--radius-sm);font:700 17px var(--font-display);padding:0 18px;letter-spacing:.5px}
 #ship-btn[data-blocked]{opacity:.45}
 #ship-btn:disabled{opacity:.4;cursor:default}
 
@@ -175,11 +185,11 @@ html body #log .topbar #ship-btn{flex:0 0 auto;height:20px;min-height:20px!impor
 #card > .ai{overflow:auto;min-height:0;flex:1 1 auto}   /* the driver buttons never scroll away; only the AI text does */
 #card > .cardhead,#card > .acts{flex:0 0 auto}
 #card .seqline{display:flex;align-items:center;gap:8px}
-#card .seqbig{font:900 30px var(--font-display);letter-spacing:.5px}
-#card .addr{font:800 20px var(--font-display);line-height:1.15;margin-top:4px;color:#fff}
-#card .city{font:700 14px var(--font-display);color:#c9cee0;margin-top:1px}
-#card .pid{color:var(--muted);font:600 12.5px ui-monospace,Consolas,monospace;margin-top:2px}
-.stchip{font:800 12px var(--font-display);padding:3px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px}
+#card .seqbig{font:600 30px var(--serif);font-variant-numeric:lining-nums tabular-nums;letter-spacing:.5px}
+#card .addr{font:600 20px var(--font-display);line-height:1.15;margin-top:4px;color:#fff}
+#card .city{font:600 14px var(--font-display);color:#c9cee0;margin-top:1px}
+#card .pid{color:var(--muted);font:600 13px ui-monospace,Consolas,monospace;margin-top:2px}
+.stchip{font:600 12px var(--font-display);padding:3px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px}
 .stchip.pending{background:rgba(255,255,255,.1);color:#d7dbe8}.stchip.incomplete{background:rgba(245,166,35,.18);color:var(--warning)}
 .stchip.uploading{background:rgba(232,64,64,.18);color:#ff8f8f}.stchip.rating{background:rgba(79,124,255,.2);color:#9db5ff}
 .stchip.complete{background:rgba(46,204,138,.18);color:var(--success)}.stchip.ship{background:rgba(41,171,226,.18);color:var(--sky)}
@@ -197,49 +207,49 @@ html body #log #card .seqpill{padding:3px 10px;border-radius:9px;line-height:1.1
 #card .seqpill.shipped{opacity:.75}
 html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px}
 #card .toprow .areabig{margin-left:auto;flex:none}
-#card .stchip.mini{font:800 9.5px/1 var(--font-display);padding:4px 6px;letter-spacing:.2px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-flex;align-items:center}
+#card .stchip.mini{font:600 11px/1 var(--font-display);padding:4px 6px;letter-spacing:.2px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-flex;align-items:center}
 #card .stchip.camhere{background:rgba(46,204,138,.16);color:#7cf0bd;border:1px solid #2ecc8a}
-#card .areabig{font:800 10px/1 var(--font-display);letter-spacing:.5px;color:#c9d2e0;background:rgba(79,163,255,.14);border:1.5px solid rgba(79,163,255,.55);border-radius:8px;padding:3px 7px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-#card .areabig b{font:900 20px/1 var(--font-display);color:#fff}
+#card .areabig{font:600 11px/1 var(--font-display);letter-spacing:.5px;color:#c9d2e0;background:rgba(79,163,255,.14);border:1.5px solid rgba(79,163,255,.55);border-radius:8px;padding:3px 7px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#card .areabig b{font:700 20px/1 var(--font-display);color:#fff}
 /* CONVENTION (Dustin 10/12): every button and chip centers its contents top to bottom */
 #card button,#card .stchip,#card .areabig,.pill,.act,.aerbtn{align-items:center}
 /* reference details (market value, parcel map) sit last, small and quiet */
 #card .cardfoot .details{border-bottom:0;border-top:1px solid var(--border);margin-top:6px;padding-top:5px;opacity:.75;font-size:11.5px}
-.ai-mini{font-size:13.5px;white-space:nowrap}.ai-mini b{font:800 14px var(--font-display)}
+.ai-mini{font-size:13.5px;white-space:nowrap}.ai-mini b{font:600 14px var(--font-display)}
 #card .ai-mini{white-space:normal;overflow-wrap:anywhere}#card .ai-mini b{font-size:12.5px}   /* card: the board-up description wraps, never cut off (Dustin 10/21) */
 .ai-k{color:var(--muted);font-size:14px}
-.ai-big{font:800 24px var(--font-display)}
-.ai-pct{font:800 22px var(--font-display)}.ai-pct.hi{color:var(--danger)}.ai-pct.mid{color:var(--warning)}.ai-pct.lo{color:var(--success)}
+.ai-big{font:600 24px var(--font-display)}
+.ai-pct{font:600 22px var(--font-display)}.ai-pct.hi{color:var(--danger)}.ai-pct.mid{color:var(--warning)}.ai-pct.lo{color:var(--success)}
 .ai-why{font-size:12px;color:#c3c7da;line-height:1.3;padding-bottom:5px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}   /* whole comment, smaller type, never cut off (Dustin 10/21) */
 .ai-why:empty{display:none}
-.ai-pill{font-size:14px;font-weight:700;padding:3px 10px;border-radius:20px;background:var(--surface2);text-align:right}
+.ai-pill{font-size:14px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--surface2);text-align:right}
 .ai-wait{display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:12.5px;line-height:1.3;padding:5px 0}
 .ai-wait span:last-child{overflow-wrap:anywhere}
 .spin{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;flex:0 0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 .acts{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:5px;margin-top:8px}
-.act{width:100%;min-width:0;padding:7px 4px;border-radius:10px;border:1.5px solid var(--border2);background:var(--surface2);color:#d6dae8;font:800 12.5px var(--font-display);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;line-height:1.15}
+.act{width:100%;min-width:0;padding:7px 4px;border-radius:10px;border:1.5px solid var(--border2);background:var(--surface2);color:#d6dae8;font:600 12.5px var(--font-display);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;line-height:1.15}
 .act span{max-width:100%;overflow-wrap:anywhere}
 .act:hover{border-color:#5b6280}
 .act.on.nvfr{background:#3d3410;border-color:#d8b42a;color:#ffe27a}
 .act.on.nop{background:#401a1a;border-color:#e05555;color:#ffb0b0}
 .act.on.flag{background:#3b2a5a;border-color:#a87bff;color:#e2d0ff}
-.act .q{font-size:11px;color:var(--muted);font-weight:700}
+.act .q{font-size:11px;color:var(--muted);font-weight:600}
 .act[disabled]{opacity:.45;cursor:not-allowed}
 .empty-card{color:var(--muted);font-size:14px;padding:6px 0}
 /* NO PHOTOS panel: inline under the card, never a modal over the map */
 #nppanel{margin:0 12px;padding:8px 10px 10px;background:#2a1418;border:1.5px solid #e05555;border-top:0;border-radius:0 0 var(--radius) var(--radius);flex:0 0 auto}
-#nppanel .np-h{font:900 15px var(--font-display);color:#ffb0b0}#nppanel .np-h span{font:700 12px var(--font-display);color:var(--muted);margin-left:4px}
-#nppanel .np-k{font:800 11px var(--font-display);letter-spacing:.5px;text-transform:uppercase;color:#d6dae8;margin-top:7px}#nppanel .np-k small{text-transform:none;color:var(--muted);font-weight:700}
+#nppanel .np-h{font:700 15px var(--font-display);color:#ffb0b0}#nppanel .np-h span{font:600 12px var(--font-display);color:var(--muted);margin-left:4px}
+#nppanel .np-k{font:600 11px var(--font-display);letter-spacing:.5px;text-transform:uppercase;color:#d6dae8;margin-top:7px}#nppanel .np-k small{text-transform:none;color:var(--muted);font-weight:600}
 #nppanel .np-rate{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:4px}
-#nppanel .np-rate button,#nppanel .np-why button{padding:7px 0;border-radius:8px;border:1.5px solid var(--border2);background:var(--surface2);font:900 15px var(--font-display);color:#e8ebf5}
+#nppanel .np-rate button,#nppanel .np-why button{padding:7px 0;border-radius:8px;border:1.5px solid var(--border2);background:var(--surface2);font:700 15px var(--font-display);color:#e8ebf5}
 #nppanel button.on{background:#e05555;border-color:#ff8a8a;color:#fff}
 #nppanel .np-why{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}#nppanel .np-why button{flex:1 1 70px;padding:7px 8px}
-#nppanel #np-text{flex:2 1 120px;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:700 14px var(--font-display);padding:6px 8px}
+#nppanel #np-text{flex:2 1 120px;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 14px var(--font-display);padding:6px 8px}
 #nppanel .np-lu{font-size:12.5px;color:#c9cee0;margin-top:7px;overflow-wrap:anywhere}#nppanel .np-lu b{color:#fff}
-#nppanel .np-err{color:#ffb38a;font:800 13px var(--font-display);margin-top:4px}#nppanel .np-err:empty{display:none}
+#nppanel .np-err{color:#ffb38a;font:600 13px var(--font-display);margin-top:4px}#nppanel .np-err:empty{display:none}
 #nppanel .np-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}#nppanel .np-btns .btn{padding:7px 12px;font-size:14px}
-.ai2 .drv{font-size:10px;color:#ffb0b0;font-weight:800}
+.ai2 .drv{font-size:11px;color:#ffb0b0;font-weight:600}
 
 .search{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 6px}
 .search input{flex:1 1 130px;min-width:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 15px var(--font-display);padding:8px 10px}
@@ -250,14 +260,14 @@ html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px
 .row.sel{background:var(--surface2);border-color:var(--accent)}
 .row.cam{box-shadow:inset 4px 0 0 #ff4fd8}
 /* SAME ADDRESS: one row for the group */
-.row .s small{font:800 12px var(--font-display);color:var(--muted);margin-left:3px}
-.gmem{display:inline-flex;align-items:center;gap:5px;margin:4px 6px 0 0;padding:5px 10px;min-height:34px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);font:800 13px var(--font-display)}
+.row .s small{font:600 12px var(--font-display);color:var(--muted);margin-left:3px}
+.gmem{display:inline-flex;align-items:center;gap:5px;margin:4px 6px 0 0;padding:5px 10px;min-height:34px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);font:600 13px var(--font-display)}
 .gmem.on{border-color:var(--accent);color:#cdd9ff}.gmem .dot{width:10px;height:10px}
-.row .s{font:900 18px var(--font-display);min-width:52px;font-variant-numeric:tabular-nums}
+.row .s{font:700 18px var(--font-display);min-width:52px;font-variant-numeric:tabular-nums}
 .row .a{flex:1;min-width:0}
-.row .a b{display:block;font:700 15px var(--font-display);line-height:1.2;overflow-wrap:anywhere}
+.row .a b{display:block;font:600 15px var(--font-display);line-height:1.2;overflow-wrap:anywhere}
 .row .a span{font-size:12.5px;color:var(--muted)}
-.row .ai2{font:800 13px var(--font-display);text-align:right;white-space:nowrap}
+.row .ai2{font:600 13px var(--font-display);text-align:right;white-space:nowrap}
 .dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
 .dot.pending{background:#1f6fe5}.dot.incomplete{background:var(--danger)}.dot.uploading{background:var(--success)}.dot.rating{background:var(--success)}.dot.complete{background:#5d6478}
 .lo{color:var(--success)}.mid{color:var(--warning)}.hi{color:var(--danger)}.rt{color:#9db5ff}
@@ -269,18 +279,18 @@ html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px
    lat/lng. The box's bottom-left corner is square and sits on the coordinate; the
    pin rotates (and scales when selected) around that corner, so the point never moves. */
 .pin{width:30px;height:30px;margin:-30px 0 0 0;border-radius:50% 50% 50% 0;transform-origin:0 100%;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;
-  font:900 11.5px/1 var(--font-display);color:#0b0d14;border:2px solid rgba(0,0,0,.65);box-shadow:0 1px 4px rgba(0,0,0,.6);transition:transform .15s}
+  font:700 11.5px/1 var(--font-display);color:#0b0d14;border:2px solid rgba(0,0,0,.65);box-shadow:0 1px 4px rgba(0,0,0,.6);transition:transform .15s}
 /* DOT COLORS (Dustin 2026-10-11): BLUE = not taken (Maptitude's color; white read like road shields) · GREEN = done but not cleared (photos uploading OR the AI rating still landing) · RED = needs
    something · GONE = complete. Cleared dots (complete) leave the map; with
    "Show driven" on they come back dim grey so they never read as uploading. */
 .pin.inflight{box-shadow:0 0 0 4px #ffb020,0 2px 6px rgba(0,0,0,.5)}   /* shot, photos still on the phone (10/19) */
 .pin.pending{background:#1f6fe5;color:#fff}.pin.uploading,.pin.rating{background:var(--success)}.pin.incomplete{background:var(--danger);color:#fff}
 .pin.complete{background:#5d6478;color:#e6e8f0;opacity:.75}.pin.ship{opacity:.6}
-#redeem-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:950;max-width:calc(100% - 24px);width:380px;background:#fff4d6;color:#3d2a00;border:2px solid #f0a500;border-radius:12px;padding:10px 38px 10px 12px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:700 14px/1.35 system-ui;display:none}
-#redeem-note b{display:block;font:900 15px system-ui;margin-bottom:2px}
-#redeem-note button{position:absolute;right:6px;top:6px;border:0;background:transparent;font:900 18px system-ui;color:#3d2a00;cursor:pointer}
-#sheet-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:949;max-width:calc(100% - 24px);width:340px;background:#dff7ea;color:#0d3b23;border:2px solid #2ecc8a;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:700 13.5px/1.35 system-ui;display:none}
-#upd-note{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:960;max-width:calc(100% - 24px);width:360px;background:#1f6fe5;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:700 14px/1.35 system-ui;display:none}
+#redeem-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:950;max-width:calc(100% - 24px);width:380px;background:#fff4d6;color:#3d2a00;border:2px solid #f0a500;border-radius:12px;padding:10px 38px 10px 12px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:600 14px/1.35 var(--sans);display:none}
+#redeem-note b{display:block;font:700 15px var(--sans);margin-bottom:2px}
+#redeem-note button{position:absolute;right:6px;top:6px;border:0;background:transparent;font:700 18px var(--sans);color:#3d2a00;cursor:pointer}
+#sheet-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:949;max-width:calc(100% - 24px);width:340px;background:#dff7ea;color:#0d3b23;border:2px solid #2ecc8a;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:600 13.5px/1.35 var(--sans);display:none}
+#upd-note{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:960;max-width:calc(100% - 24px);width:360px;background:#1f6fe5;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:600 14px/1.35 var(--sans);display:none}
 .pin>span{display:inline-block;transform:rotate(45deg)}
 .pin.sel{transform:rotate(-45deg) scale(1.45);border:3px solid #fff;box-shadow:0 0 0 4px #111,0 2px 10px #000;z-index:1000}
 /* the parcel the CAMERA is on wears a GREEN ring (Dustin 10/11) */
@@ -291,7 +301,7 @@ html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px
    closed: green, never red (red read as "something wrong" and the driver can't fix it — ours to handle).
    BEST NEXT = a white RING, not a white pin (white pins read like road shields, 10/11). */
 .pin.marked{background:#8e44ff;color:#fff}.pin.worked{background:var(--success)}
-.pin.marked>span::after{content:'✓';position:absolute;right:-9px;top:-9px;width:13px;height:13px;border-radius:50%;background:#fff;color:#8e44ff;font:900 10px/13px var(--font-display);text-align:center;box-shadow:0 0 0 1.5px #3b1a73}
+.pin.marked>span::after{content:'✓';position:absolute;right:-9px;top:-9px;width:13px;height:13px;border-radius:50%;background:#fff;color:#8e44ff;font:700 11px/13px var(--font-display);text-align:center;box-shadow:0 0 0 1.5px #3b1a73}
 .zlo .pin.marked>span::after{display:none}
 .dp .pin.next{border-style:solid;border-color:rgba(0,0,0,.65);box-shadow:0 0 0 4px #fff,0 0 0 6px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.6)}
 .dot.marked{background:#8e44ff}.dot.worked{background:var(--success)}
@@ -303,7 +313,7 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 .dp #dp-end{display:block}
 #dp-day{position:absolute;z-index:800;right:12px;width:40px;height:40px;border-radius:50%;border:1px solid #3a4260;background:rgba(21,26,38,.94);color:#fff;font-size:17px;line-height:38px;text-align:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.6);display:none;padding:0}
 .dp #dp-day{display:block}#dp-day.on{background:#2b3c6b;border-color:#fff;box-shadow:0 0 0 3px #4f7cff}
-#dp-daycard{display:none;position:absolute;z-index:800;right:60px;max-width:300px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 11px;font:700 12.5px/1.45 var(--font-display);color:#d7dbe8}
+#dp-daycard{display:none;position:absolute;z-index:800;right:60px;max-width:300px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 11px;font:600 12.5px/1.45 var(--font-display);color:#d7dbe8}
 #dp-daycard b{color:#fff}#dp-daycard .m{color:var(--muted);font-weight:600}
 #dp-end.on{background:#2b3c6b;border-color:#fff;box-shadow:0 0 0 3px #4f7cff}
 #dp-chip{display:none;position:absolute;z-index:800;right:60px;bottom:26px;max-width:330px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 10px;font-size:12.5px;color:#e6e8f0}
@@ -311,27 +321,27 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #dp-chip input{flex:1;min-width:0;font:13px var(--font-display);padding:6px 8px;border-radius:7px;border:1px solid #3a4260;background:#0f1320;color:#fff}
 /* SAME ADDRESS "+1" badge, BATCH/MULTI picks (glow) and MULTI tap order (number left of the pin) */
 .pin>span{position:relative}
-.pin .plus{position:absolute;left:calc(100% + 13px);top:50%;transform:translateY(-50%);font:900 13px/1 var(--font-display);padding:3px 6px;border-radius:10px;background:#fff;color:#0b0d14;border:2px solid #0b0d14;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6)}
-.zlo .pin .plus{font-size:10px;left:calc(100% + 6px)}
+.pin .plus{position:absolute;left:calc(100% + 13px);top:50%;transform:translateY(-50%);font:700 13px/1 var(--font-display);padding:3px 6px;border-radius:10px;background:#fff;color:#0b0d14;border:2px solid #0b0d14;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+.zlo .pin .plus{font-size:11px;left:calc(100% + 6px)}
 @keyframes pulse{0%{opacity:1;transform:scale(.8)}100%{opacity:0;transform:scale(1.5)}}
 .zlo .pin{width:12px;height:12px;margin:-12px 0 0 0;font-size:0;border-width:1.5px}
-.zlo .pin.sel{width:22px;height:22px;margin:-22px 0 0 0;font-size:10px}
+.zlo .pin.sel{width:22px;height:22px;margin:-22px 0 0 0;font-size:11px}
 /* MID ZOOM (12–13): seq numbers stay readable from further away (Dustin 10/11) */
-.zmid .pin{width:23px;height:23px;margin:-23px 0 0 0;font-size:10.5px;border-width:1.5px}
+.zmid .pin{width:23px;height:23px;margin:-23px 0 0 0;font-size:11px;border-width:1.5px}
 .zmid .pin.sel{width:28px;height:28px;margin:-28px 0 0 0;font-size:12px}
-.zmid .pin .plus{font-size:10px;left:calc(100% + 8px)}
+.zmid .pin .plus{font-size:11px;left:calc(100% + 8px)}
 /* CLOSE IN (zoom 17+): the lot outline is the point — pins shrink so they stop covering it (Dustin 10/12) */
 .zclose .pin{width:29px;height:29px;margin:-29px 0 0 0;font-size:12px;border-width:2px}
 .zclose .pin.sel{width:31px;height:31px;margin:-31px 0 0 0;font-size:13px;transform:rotate(-45deg) scale(1.4)}
 .zclose .pin.cam::after{inset:-8px;border-width:3px}
-.zclose .pin .plus{font-size:10px;left:calc(100% + 7px);padding:1px 5px}
+.zclose .pin .plus{font-size:11px;left:calc(100% + 7px);padding:1px 5px}
 /* STACKED SPOT (desk-p52, MT 10/28 + RF 10/25): parcels on top of each other = ONE pin + a count badge (same white pill
    as the old "+1"); a tap opens the list of every seq there. Nothing here changes the zoom. */
 .pin .plus.stk{min-width:12px;text-align:center}
 #stklist{position:fixed;z-index:1200;display:none;width:300px;max-width:calc(100vw - 16px);background:rgba(11,13,20,.97);color:#e6e8f0;border:1.5px solid #fff;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.7);font:600 13px/1.3 var(--font-display);overflow:hidden}
-#stklist .stk-h{display:flex;align-items:center;gap:8px;padding:8px 8px 7px 11px;border-bottom:1px solid #2c3350;font:800 14px var(--font-display);color:#fff}
+#stklist .stk-h{display:flex;align-items:center;gap:8px;padding:8px 8px 7px 11px;border-bottom:1px solid #2c3350;font:600 14px var(--font-display);color:#fff}
 #stklist .stk-h span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#stklist .stk-x{border:0;background:transparent;color:#fff;font:900 18px/1 system-ui;width:34px;height:30px;border-radius:7px;cursor:pointer;flex:0 0 auto}
+#stklist .stk-x{border:0;background:transparent;color:#fff;font:700 18px/1 var(--sans);width:34px;height:30px;border-radius:7px;cursor:pointer;flex:0 0 auto}
 #stklist .stk-x:hover{background:#1c2236}
 #stklist .stk-b{overflow-y:auto;overscroll-behavior:contain}
 #stklist .stk-row{display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid #1c2236;cursor:pointer;min-height:40px;touch-action:manipulation}
@@ -340,12 +350,12 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #stklist .stk-row.on{background:#1d2a4d}
 #stklist .stk-row.done{opacity:.62}
 #stklist .stk-row.off{cursor:default;opacity:.5}
-#stklist .stk-seq{flex:0 0 auto;min-width:46px;text-align:center;padding:4px 7px;border-radius:8px;font:900 15px/1 var(--font-display);background:#1f6fe5;color:#fff;border:2px solid rgba(0,0,0,.6)}
+#stklist .stk-seq{flex:0 0 auto;min-width:46px;text-align:center;padding:4px 7px;border-radius:8px;font:700 15px/1 var(--font-display);background:#1f6fe5;color:#fff;border:2px solid rgba(0,0,0,.6)}
 #stklist .stk-seq.uploading,#stklist .stk-seq.rating,#stklist .stk-seq.worked{background:var(--success);color:#0b0d14}
 #stklist .stk-seq.incomplete{background:var(--danger)}#stklist .stk-seq.marked{background:#8e44ff}
 #stklist .stk-seq.complete,#stklist .stk-seq.earlier,#stklist .stk-seq.redeemed{background:#5d6478;color:#e6e8f0}
 #stklist .stk-t{flex:1;min-width:0}
-#stklist .stk-a{font:700 14px/1.25 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stklist .stk-a{font:600 14px/1.25 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #stklist .stk-s{font:600 12px/1.25 var(--font-display);color:#aab1c7}
 @media (any-pointer:coarse){ #stklist .stk-row{min-height:46px} }
 /* GPS = a big BRIGHT ORANGE navigation arrow with a white outline and a pulsing ring
@@ -365,46 +375,46 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 .hud{position:absolute;z-index:500;background:rgba(17,19,28,.93);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.5)}
 #nav{top:12px;left:56px;right:330px;display:flex;align-items:center;gap:14px;padding:10px 14px;min-height:64px}
 #nav .arrow{width:46px;height:46px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--surface2);font-size:28px;transition:transform .4s}
-#nav .t1{font:900 20px var(--font-display)}#nav .t2{color:#c3c7da;font-size:14px}
-#nav .dist{font:900 26px var(--font-display);margin-left:auto;text-align:right;white-space:nowrap}
-#nav .dist small{display:block;font:700 12px var(--font-display);color:var(--muted)}
+#nav .t1{font:700 20px var(--font-display)}#nav .t2{color:#c3c7da;font-size:14px}
+#nav .dist{font:700 26px var(--font-display);margin-left:auto;text-align:right;white-space:nowrap}
+#nav .dist small{display:block;font:600 12px var(--font-display);color:var(--muted)}
 #pos{left:12px;bottom:26px;width:306px;padding:10px 12px;font-size:13px}
-#pos .h{display:flex;align-items:center;gap:8px;font:800 14px var(--font-display)}
+#pos .h{display:flex;align-items:center;gap:8px;font:600 14px var(--font-display)}
 #pos .l2{color:var(--muted);margin-top:4px;line-height:1.35}
 #pos .btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.sbtn{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font:700 12.5px var(--font-display)}
+.sbtn{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font:600 12.5px var(--font-display)}
 .kdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #0006}
 .sbtn:hover{border-color:#5b6280}.sbtn.on{border-color:var(--accent);color:#cdd9ff}
-#tilebar{right:12px;bottom:26px;padding:8px 10px;font-size:12.5px;max-width:306px;display:flex;flex-direction:column;gap:6px}
+#tilebar{right:12px;bottom:26px;padding:8px 10px;font-size:13px;max-width:306px;display:flex;flex-direction:column;gap:6px}
 #tilebar .row2{display:flex;gap:6px;align-items:center;flex-wrap:wrap}#tilebar .row2:first-of-type{padding-right:30px}   /* room for the panel's minimize button */
-#nogrid{position:absolute;z-index:450;left:50%;top:128px;transform:translateX(-50%);background:#3a2a12;color:#ffd08a;padding:6px 12px;border-radius:20px;font:700 13px var(--font-display);display:none}
+#nogrid{position:absolute;z-index:450;left:50%;top:128px;transform:translateX(-50%);background:#3a2a12;color:#ffd08a;padding:6px 12px;border-radius:20px;font:600 13px var(--font-display);display:none}
 
 /* overlays */
 #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#22263a;border:1px solid var(--border2);color:var(--text);
-  padding:10px 16px;border-radius:12px;font:700 15px var(--font-display);z-index:3000;display:none;max-width:70vw;box-shadow:0 8px 30px #000}
+  padding:10px 16px;border-radius:12px;font:600 15px var(--font-display);z-index:3000;display:none;max-width:70vw;box-shadow:0 8px 30px #000}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2500;display:none;align-items:center;justify-content:center}
 .modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:22px;max-width:520px;width:92%;box-shadow:0 20px 60px #000}
-.modal h2{font:800 20px var(--font-display);margin-bottom:10px}
+.modal h2{font:600 24px var(--serif);font-variant-numeric:lining-nums;margin-bottom:10px}
 .modal p{white-space:pre-wrap;line-height:1.45;color:#d0d4e4;font-size:15px}
 .modal .mb{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
-.btn{border:0;border-radius:10px;padding:10px 16px;font:800 15px var(--font-display)}
+.btn{border:0;border-radius:10px;padding:10px 16px;font:600 15px var(--font-display)}
 .btn.p{background:var(--accent);color:#fff}.btn.g{background:var(--surface2);border:1px solid var(--border2)}.btn.ok{background:var(--success);color:#08130c}
-.modal input{width:100%;margin-top:6px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:700 16px var(--font-display);padding:9px 10px}
+.modal input{width:100%;margin-top:6px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 16px var(--font-display);padding:9px 10px}
 .modal label{display:block;margin-top:12px;font-size:13px;color:var(--muted)}
 #help table{width:100%;border-collapse:collapse;font-size:14px}
 #help td{padding:5px 4px;border-bottom:1px solid var(--border)}
 #help td:first-child{white-space:nowrap;width:120px}
 #start{position:fixed;inset:0;z-index:2000;background:var(--bg);display:none;align-items:center;justify-content:center}
 #start .box{max-width:560px;width:92%;background:var(--surface);border:1px solid var(--border2);border-radius:18px;padding:26px}
-#start h1{font:900 26px var(--font-display);margin-bottom:6px}
+#start h1{font:700 26px var(--font-display);margin-bottom:6px}
 #start p{color:#c3c7da;line-height:1.45;margin:8px 0}
 #start .btn{margin-top:10px;width:100%;padding:13px}
 #start .hint{font-size:13px;color:var(--muted)}
 #prog{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px}
 
-.multi{display:inline-block;margin-top:5px;font:900 12.5px var(--font-display);letter-spacing:.4px;padding:3px 9px;border-radius:7px;background:#3b2a12;color:#ffc46b;border:1.5px solid #c98a2a}
+.multi{display:inline-block;margin-top:5px;font:700 13px var(--font-display);letter-spacing:.4px;padding:3px 9px;border-radius:7px;background:#3b2a12;color:#ffc46b;border:1.5px solid #c98a2a}
 .multi-t{color:#ffc46b}
-.warnchip{margin-top:5px;font:700 12px/1.3 var(--font-display);padding:4px 8px;border-radius:7px;background:#3a1d12;color:#ffb38a;border:1px solid #a8552c}
+.warnchip{margin-top:5px;font:600 12px/1.3 var(--font-display);padding:4px 8px;border-radius:7px;background:#3a1d12;color:#ffb38a;border:1px solid #a8552c}
 .details{padding:6px 0 4px;border-bottom:1px solid var(--border)}
 .facts{font-size:13px;color:#c9cee0}.facts b{color:#fff}
 .owner{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
@@ -413,7 +423,7 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 @container log (max-width: 520px) {
   .stats{grid-template-columns:repeat(3,1fr)}
   .stat .n{font-size:20px}
-  .stat .l{font-size:10px}
+  .stat .l{font-size:11px}
 }
 @container log (max-width: 400px) {
   .brand small{display:none}
@@ -425,9 +435,9 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 /* ── WHERE TO GO: the NEXT parcel's address, big (log pane + fixed map banner) ── */
 #nextbar{margin:8px 12px 0;padding:8px 12px;border-radius:var(--radius-sm);background:#10233a;border:1.5px solid #2f6db3;cursor:pointer;flex:0 0 auto}
 #nextbar:hover{border-color:#5da0ff}
-#nextbar .k{font:800 11px var(--font-display);letter-spacing:.6px;color:#8fc0ff;text-transform:uppercase}
-#nextbar .st{font:900 21px/1.15 var(--font-display);color:#fff;margin-top:1px;overflow-wrap:anywhere}
-#nextbar .ct{font:700 14px var(--font-display);color:#c4d6ee}
+#nextbar .k{font:600 11px var(--font-display);letter-spacing:.6px;color:#8fc0ff;text-transform:uppercase}
+#nextbar .st{font:700 21px/1.15 var(--font-display);color:#fff;margin-top:1px;overflow-wrap:anywhere}
+#nextbar .ct{font:600 14px var(--font-display);color:#c4d6ee}
 /* TOP ADDRESS CHIPS (Dustin 2026-10-11: "too big ... dont need to take up so much space,
    it should probably show the next closest seq numbers"). Compact floating chips: the
    camera's parcel, then the CLOSEST not-taken parcels to the GPS dot (the map centre
@@ -437,11 +447,11 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #addrbanner .blk:hover{background:rgba(255,255,255,.08)}
 #addrbanner .blk.near{background:rgba(31,111,229,.20);border:1.5px solid #2f6db3}
 #addrbanner .blk.cam{background:rgba(12,26,52,.95);border:2px solid #2ecc8a;box-shadow:0 0 0 2px rgba(46,204,138,.35),0 3px 12px rgba(0,0,0,.55)}   /* same chip as the others; the GREEN RING says: the camera's live seq */
-#addrbanner .lbl{flex:none;font:800 10.5px var(--font-display);letter-spacing:.6px;text-transform:uppercase;color:#8fc0ff;align-self:center}
-#addrbanner .k{flex:none;font:900 13px var(--font-display);color:#8fc0ff}
+#addrbanner .lbl{flex:none;font:600 11px var(--font-display);letter-spacing:.6px;text-transform:uppercase;color:#8fc0ff;align-self:center}
+#addrbanner .k{flex:none;font:700 13px var(--font-display);color:#8fc0ff}
 #addrbanner .cam .k{color:#8fc0ff}
-#addrbanner .st{font:800 15px/1.15 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis}
-#addrbanner .ct{flex:none;font:700 12px var(--font-display);color:#aeb6cc}
+#addrbanner .st{font:600 15px/1.15 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis}
+#addrbanner .ct{flex:none;font:600 12px var(--font-display);color:#aeb6cc}
 #addrbanner .cam .ct{display:none}   /* the camera chip: seq + street only */
 /* 10/18: the active parcel is the ONLY chip now, centred and a little bigger */
 #addrbanner .blk.cam{padding:7px 16px;gap:10px}
@@ -449,19 +459,19 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #addrbanner .cam .st{font-size:21px}
 #addrbanner .cam .camico{width:24px;height:24px}
 #addrbanner .blk.cam.sel{border-color:#4f7cff;box-shadow:0 3px 12px rgba(0,0,0,.55)}   /* selected, not the camera's: blue ring, no green */
-.leaflet-tooltip.plabel{background:#0d0f16;color:#fff;border:1.5px solid #fff;border-radius:7px;font:800 14px var(--font-display);padding:3px 8px;box-shadow:0 2px 8px #000}
+.leaflet-tooltip.plabel{background:#0d0f16;color:#fff;border:1.5px solid #fff;border-radius:7px;font:600 14px var(--font-display);padding:3px 8px;box-shadow:0 2px 8px #000}
 .leaflet-tooltip.plabel.sel{border-color:#4f7cff}.leaflet-tooltip.plabel.cam{border-color:#2ecc8a}.leaflet-tooltip.plabel.next{border-color:#5da0ff;border-style:dashed}
 .leaflet-tooltip-top.plabel:before{border-top-color:#fff}
-#strip .s-addr{font:800 11px/1.2 var(--font-display);color:#fff;overflow-wrap:anywhere;width:100%;padding:4px 2px;border-radius:6px;background:#10233a;border:1px solid #2f6db3}
+#strip .s-addr{font:600 11px/1.2 var(--font-display);color:#fff;overflow-wrap:anywhere;width:100%;padding:4px 2px;border-radius:6px;background:#10233a;border:1px solid #2f6db3}
 #strip .s-addr.cam{background:#2a1428;border-color:#8a3a7e}
-#strip .s-addr i{display:block;font-style:normal;font-size:9.5px;color:#8fc0ff;letter-spacing:.4px}
+#strip .s-addr i{display:block;font-style:normal;font-size:11px;color:#8fc0ff;letter-spacing:.4px}
 #strip .s-addr.cam i{color:#ff9be9}
 
 /* ── AERIAL: opened ONLY from the field card (button or A) — full-height overlay ── */
 #card .cardhead{display:flex;gap:10px;align-items:flex-start}
 #card .cardtxt{flex:1;min-width:0}
 .seqtop{flex-wrap:wrap;justify-content:space-between;row-gap:6px}
-.aerbtn{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;border:1.5px solid var(--border2);background:var(--surface2);font:800 13px var(--font-display);color:#d6dae8;cursor:zoom-in}
+.aerbtn{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;border:1.5px solid var(--border2);background:var(--surface2);font:600 13px var(--font-display);color:#d6dae8;cursor:zoom-in}
 .aerbtn:hover{border-color:var(--accent);color:#fff}
 .cardbtns{display:inline-flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .rtbtn{border-color:#2f6db3;background:#10233a;color:#cfe2ff;cursor:pointer}
@@ -469,23 +479,23 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 .rtbtn[disabled]{opacity:.45;cursor:not-allowed}
 #aerover{position:fixed;inset:0;z-index:2400;background:rgba(5,6,10,.97);display:none;flex-direction:column;align-items:center;justify-content:center;cursor:zoom-out}
 #aerover.on{display:flex}
-#aerover .cap{color:#e8ebf5;font:800 18px var(--font-display);padding:10px 16px 8px;text-align:center}
+#aerover .cap{color:#e8ebf5;font:600 18px var(--font-display);padding:10px 16px 8px;text-align:center}
 #aerover .cap small{display:block;color:var(--muted);font:600 13px var(--font-display);margin-top:3px}
 #aerover img{display:block;height:calc(100vh - 90px);max-width:96vw;object-fit:contain;border-radius:6px;box-shadow:0 10px 40px #000}
-#aerover .none{color:var(--muted);font:700 16px var(--font-display);padding:40px}
+#aerover .none{color:var(--muted);font:600 16px var(--font-display);padding:40px}
 
 /* ── PANE LAYOUT: split · log minimized (strip) · log full · map full ───────── */
 .winbtns{display:flex;gap:4px}
-.wbtn{width:28px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);font:900 14px/1 var(--font-display);display:flex;align-items:center;justify-content:center;padding:0;color:#cfd3e6}
+.wbtn{width:28px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);font:700 14px/1 var(--font-display);display:flex;align-items:center;justify-content:center;padding:0;color:#cfd3e6}
 .wbtn:hover{border-color:var(--accent);color:#fff}
 #strip{display:none;flex-direction:column;align-items:center;gap:10px;padding:10px 4px;height:100vh;cursor:pointer;background:var(--surface);text-align:center;overflow:hidden}
 #strip:hover{background:var(--surface2)}
-#strip .s-open{font:900 20px var(--font-display);color:#cfd3e6}
-#strip .s-seq{font:800 11px var(--font-display);color:var(--muted);line-height:1.2}
-#strip .s-seq b{display:block;font:900 20px var(--font-display);color:var(--text)}
-#strip .s-n{font:900 18px var(--font-display);line-height:1}
-#strip .s-l{font:700 9.5px var(--font-display);color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
-#strip .s-link{font:800 11px var(--font-display);border-radius:8px;padding:4px 3px;width:100%}
+#strip .s-open{font:700 20px var(--font-display);color:#cfd3e6}
+#strip .s-seq{font:600 11px var(--font-display);color:var(--muted);line-height:1.2}
+#strip .s-seq b{display:block;font:700 20px var(--font-display);color:var(--text)}
+#strip .s-n{font:700 18px var(--font-display);line-height:1}
+#strip .s-l{font:600 11px var(--font-display);color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+#strip .s-link{font:600 11px var(--font-display);border-radius:8px;padding:4px 3px;width:100%}
 #desk.logmin{grid-template-columns:76px 0 1fr}
 #desk.logmin #log > :not(#strip){display:none}
 #desk.logmin #strip{display:flex}
@@ -502,16 +512,16 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #desk:not(.split) #splitter{visibility:hidden;pointer-events:none}
 #mapbtns{position:absolute;z-index:520;left:10px;top:84px;display:flex;flex-direction:column;gap:6px}
 #mapbtns .wbtn{width:34px;height:34px;font-size:16px;background:rgba(17,19,28,.93);box-shadow:0 2px 8px rgba(0,0,0,.5)}
-#mapbtns .wtxt{font:800 11px var(--font-display);width:auto;padding:0 8px;height:30px}
+#mapbtns .wtxt{font:600 11px var(--font-display);width:auto;padding:0 8px;height:30px}
 
 /* ── FLOATING MAP PANELS: each one minimizes to a small tab ─────────────────── */
 .hud{padding-right:34px}
-.hud .hmin{position:absolute;top:6px;right:6px;width:24px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);font:900 13px/1 var(--font-display);color:#cfd3e6;display:flex;align-items:center;justify-content:center;padding:0;z-index:2}
+.hud .hmin{position:absolute;top:6px;right:6px;width:24px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);font:700 13px/1 var(--font-display);color:#cfd3e6;display:flex;align-items:center;justify-content:center;padding:0;z-index:2}
 .hud .hmin:hover{border-color:var(--accent);color:#fff}
 .hud .htab{display:none}
 .hud.min{width:auto !important;min-height:0 !important;padding:0 !important}
 .hud.min > :not(.htab){display:none !important}
-.hud.min .htab{display:block;padding:7px 12px;font:800 13px var(--font-display);cursor:pointer;white-space:nowrap;color:#cfd3e6}
+.hud.min .htab{display:block;padding:7px 12px;font:600 13px var(--font-display);cursor:pointer;white-space:nowrap;color:#cfd3e6}
 .hud.min .htab:hover{color:#fff}
 #nav.min{right:auto}
 /* ── SHORT SCREENS (1366x768 laptops, small windows): tighter, list stays in view; the log pane scrolls as a last resort ── */
@@ -536,7 +546,7 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #log .stats{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:4px;padding:6px 12px}
 #log .stat{padding:4px 1px;min-height:0}
 #log .stat .n{font-size:16px}
-#log .stat .l{font-size:8.5px;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#log .stat .l{font-size:11px;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #log .gate{margin:0 12px;flex-direction:row!important;align-items:stretch;gap:6px}
 #log #allclear{font-size:12px;padding:6px 9px;line-height:1.2}
 #log #ship-btn{font-size:14px;padding:0 16px;min-height:36px;width:auto!important}
@@ -546,15 +556,15 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #log #card .seqbig{font-size:22px;margin-right:2px}
 #log #card .addr{font-size:17px;margin-top:3px}
 #log #card .city{font-size:12.5px}
-#log #card .pid{font-size:11px}
+#log #card .pid{font-size:13px}
 #log .navbtns,#log .acts{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px;margin-top:6px}
-#log .navbtns .aerbtn,#log .acts .act{width:100%;min-width:0;min-height:38px;justify-content:center;align-items:center;padding:5px 4px;font:800 12px var(--font-display);flex-direction:row;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#log .navbtns .aerbtn,#log .acts .act{width:100%;min-width:0;min-height:38px;justify-content:center;align-items:center;padding:5px 4px;font:600 12px var(--font-display);flex-direction:row;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #log .navbtns kbd,#log .acts kbd{display:none}
 #log .search{padding:6px 12px 4px;flex-wrap:nowrap}
 #log .foot{padding:4px 12px}
-#log #card .pid{white-space:normal;overflow-wrap:anywhere;font-size:11.5px}   /* parcel id + land use: wraps, never cut off (10/21) */
+#log #card .pid{white-space:normal;overflow-wrap:anywhere;font-size:13px}   /* parcel id + land use: wraps, never cut off (10/21) */
 #log #allclear{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-#log #card .details{display:flex;flex-wrap:wrap;gap:1px 8px;font-size:12px;margin-top:4px}
+#log #card .details{display:flex;flex-wrap:wrap;gap:1px 8px;font-size:13px;margin-top:4px}
 #log #card .details > div{margin:0}
 #log #card .ai{margin-top:6px;padding-top:4px;font-size:12px}
 #log #card .ai > *{margin-top:2px}
@@ -576,7 +586,7 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #aerover.on{display:flex}
 #aerover.big{width:min(72%,880px);height:calc(100% - 140px)}
 #aerover .aerbar{display:flex;align-items:center;gap:6px;padding:6px 6px 4px 10px}
-#aerover .aerbar .cap{flex:1;min-width:0;padding:0!important;text-align:left!important;font:800 13px var(--font-display)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#aerover .aerbar .cap{flex:1;min-width:0;padding:0!important;text-align:left!important;font:600 13px var(--font-display)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #aerover .aerbar .cap small{display:none}
 #aerover .aerbar .wbtn{flex:none;min-width:34px;min-height:30px}
 #aerover-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 6px 6px}
@@ -595,15 +605,15 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #addrbanner .ab-body{justify-content:center;padding:6px 8px}
 /* the route box squeezed beside the centred address chip (10/19): smaller type, same order */
 #route-slot.rt-tight{padding:8px 30px 8px 10px}
-#route-slot.rt-tight .rt-k{font-size:10.5px;gap:5px;letter-spacing:.3px;flex-wrap:nowrap;white-space:nowrap}
+#route-slot.rt-tight .rt-k{font-size:11px;gap:5px;letter-spacing:.3px;flex-wrap:nowrap;white-space:nowrap}
 #route-slot.rt-tight .rt-k .rt-stop{font-size:12px;padding:3px 7px;margin-right:18px}
 #route-slot.rt-tight .rt-st{font-size:18px;margin-top:2px}
 #route-slot.rt-tight .rt-ct{font-size:12px}
 #route-slot.rt-tight .rt-d{gap:8px;margin-top:4px}
-#route-slot.rt-tight .rt-d .d{font-size:19px}#route-slot.rt-tight .rt-d .t{font-size:17px}#route-slot.rt-tight .rt-d .s{font-size:10.5px}
+#route-slot.rt-tight .rt-d .d{font-size:19px}#route-slot.rt-tight .rt-d .t{font-size:17px}#route-slot.rt-tight .rt-d .s{font-size:11px}
 #route-slot.rt-tight .rt-turn{font-size:15px;margin-top:4px}
 #route-slot.rt-tight .rt-mv .rt-ic{width:36px;height:36px;padding:3px}#route-slot.rt-tight .rt-mv{gap:8px;margin-top:4px}#route-slot.rt-tight .rt-then{font-size:12px;gap:5px;margin-top:4px;padding-top:4px}#route-slot.rt-tight .rt-then .rt-ic2{width:20px;height:20px}
-#route-slot.rt-tight .rt-n{font-size:10.5px;margin-top:2px}
+#route-slot.rt-tight .rt-n{font-size:11px;margin-top:2px}
 #addrbanner{top:4px!important}
 /* the CAMERA's live chip: a bold green ring, the camera icon bigger and centred top-to-bottom (Dustin 10/11) */
 #addrbanner .blk.cam{align-items:center;border:3px solid #2ecc8a!important;box-shadow:0 0 0 3px rgba(46,204,138,.45),0 0 16px 4px rgba(46,204,138,.55),0 3px 12px rgba(0,0,0,.55)!important}
@@ -618,7 +628,7 @@ html body #log .navbtns .aerbtn,html body #log .acts .act{min-height:30px!import
 /* Aerial last and alone; Camera + Route are parcel actions (Dustin 10/11) */
 #log .navbtns{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 #log .aerrow{display:grid;grid-template-columns:1fr;margin-top:4px}
-html body #log .aerrow .aerbtn{width:100%;justify-content:center;min-height:30px;padding:3px 4px;font:800 11.5px var(--font-display);border-radius:8px}
+html body #log .aerrow .aerbtn{width:100%;justify-content:center;min-height:30px;padding:3px 4px;font:600 11.5px var(--font-display);border-radius:8px}
 #log .aerrow kbd{display:none}
 @media (any-pointer:coarse){ html body #log .aerrow .aerbtn{min-height:34px} }
 
@@ -633,7 +643,7 @@ html body #list .row .ai2{font-size:11.5px}
 @media (any-pointer:coarse){ html body #list .row{min-height:36px} }
 
 /* Aerial sits in the empty space right of the address (Dustin 10/11) */
-html body #log #card .aerfloat{float:right;margin:4px 0 2px 8px;min-height:30px;padding:3px 10px;font:800 11.5px var(--font-display);border-radius:8px}
+html body #log #card .aerfloat{float:right;margin:4px 0 2px 8px;min-height:30px;padding:3px 10px;font:600 11.5px var(--font-display);border-radius:8px}
 #log #card .aerfloat kbd{display:none}
 #log #card .pid{clear:right}
 
@@ -645,7 +655,7 @@ html body #log .title .sub{display:none}
 html body #log .stats{display:flex!important;flex-wrap:nowrap;gap:3px;padding:4px 12px}
 html body #log .stat{flex:1 1 0;min-width:0;display:flex;align-items:baseline;justify-content:center;gap:3px;padding:2px 3px;min-height:0!important;border-radius:6px}
 html body #log .stat .n{font-size:13px;line-height:1.2}
-html body #log .stat .l{font-size:8.5px}
+html body #log .stat .l{font-size:11px}
 html body #log .gate{margin:0 12px}
 html body #log #allclear{font-size:11px;padding:2px 8px;min-height:0}
 html body #log #ship-btn{font-size:11.5px;padding:0 10px;min-height:22px!important;height:24px;letter-spacing:.3px}
@@ -663,22 +673,22 @@ html body #log .search input,html body #log .search select{min-height:26px!impor
    property characteristics compact; smaller list rows. */
 html body #log .stat{flex-direction:column;align-items:center;justify-content:center;gap:0;padding:2px 1px}
 html body #log .stat .n{font-size:13px;line-height:1.1}
-html body #log .stat .l{font-size:7.5px;line-height:1.1;letter-spacing:0;max-width:100%}
+html body #log .stat .l{font-size:11px;line-height:1.1;letter-spacing:0;max-width:100%}
 html body #log #card .ai-row{padding:2px 0 1px;gap:8px}
-html body #log #card .ai-k{font-size:12px}
+html body #log #card .ai-k{font-size:13px}
 html body #log #card .ai-big{font-size:17px}
 html body #log #card .ai-pct{font-size:16px}
-html body #log #card .ai-why{font-size:11px;line-height:1.25;padding-bottom:3px}
-html body #log #card .ai-mini{font-size:11.5px}html body #log #card .ai-mini b{font-size:12px}
+html body #log #card .ai-why{font-size:12px;line-height:1.25;padding-bottom:3px}
+html body #log #card .ai-mini{font-size:12px}html body #log #card .ai-mini b{font-size:13px}
 html body #log #card .ai-tail{padding:3px 0 0;gap:2px 10px}
-html body #log #card .details{font-size:11.5px}
+html body #log #card .details{font-size:13px}
 html body #log #card .addr{font-size:16px}
 html body #log #card .seqbig{font-size:20px}
 html body #list .row{padding:2px 8px}
-html body #list .row .s{font-size:12px;min-width:34px}
-html body #list .row .a b{font-size:12px}
-html body #list .row .a span{font-size:10.5px}
-html body #list .row .ai2{font-size:10.5px;line-height:1.1}
+html body #list .row .s{font-size:13px;min-width:34px}
+html body #list .row .a b{font-size:13px}
+html body #list .row .a span{font-size:12px}
+html body #list .row .ai2{font-size:13px;line-height:1.1}
 @media (any-pointer:coarse){ html body #list .row{min-height:30px} }
 
 html body #log .acts .act{font-size:11px!important;gap:3px!important;padding:3px 2px!important}
@@ -687,15 +697,15 @@ html body #log .acts .act{font-size:11px!important;gap:3px!important;padding:3px
    No puck yet: Connect GPS. Connected: tap = keep the map centred on you / stop. */
 html body #pos{display:none!important}
 #gpsbar{position:absolute;z-index:560;left:12px;bottom:12px;display:flex;gap:6px}
-#gpsbar button{border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#e8ebf7;font:800 12.5px var(--font-display);padding:6px 12px;box-shadow:0 3px 12px rgba(0,0,0,.55);cursor:pointer}
+#gpsbar button{border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#e8ebf7;font:600 12.5px var(--font-display);padding:6px 12px;box-shadow:0 3px 12px rgba(0,0,0,.55);cursor:pointer}
 #gps-toggle.on{border-color:#ff6a00;color:#ffd2b0;background:rgba(60,26,6,.95)}
 #gps-toggle.wait{color:var(--muted)}
 @media (any-pointer:coarse){ #gpsbar button{min-height:40px;padding:8px 14px} }
 /* SPEED (Dustin 10/19: "can we add MPH to the map overlay"): from the GPS, beside the GPS button */
-#mph{display:inline-flex;align-items:center;border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#fff;font:900 15px var(--font-display);padding:5px 12px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
+#mph{display:inline-flex;align-items:center;border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#fff;font:700 15px var(--font-display);padding:5px 12px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
 #mph.stale{color:var(--muted)}
-#mph b{font-weight:900;margin-right:3px}
-#mph .lim{margin-left:8px;min-width:26px;padding:1px 5px;border-radius:5px;background:#fff;color:#111;border:2px solid #111;font:900 13px var(--font-display);text-align:center}   /* a little speed-limit sign */
+#mph b{font-weight:700;margin-right:3px}
+#mph .lim{margin-left:8px;min-width:26px;padding:1px 5px;border-radius:5px;background:#fff;color:#111;border:2px solid #111;font:700 13px var(--font-display);text-align:center}   /* a little speed-limit sign */
 #mph.over{border-color:#ff4d4d;background:rgba(120,12,12,.95);color:#fff;animation:mphOver 1s ease-in-out infinite}
 @keyframes mphOver{50%{box-shadow:0 0 0 4px rgba(255,77,77,.45)}}
 
@@ -706,19 +716,19 @@ html body #log .topbar .brand small{display:none}
 html body #log .topbar .chip{font-size:11px;padding:1px 7px}
 html body #log .topbar .grow{display:none}
 html body #log .topbar .pillrow{flex:1 1 auto;justify-content:flex-start}
-html body #log .topbar .pill{font-size:10px!important;padding:1px 6px!important}
+html body #log .topbar .pill{font-size:11px!important;padding:1px 6px!important}
 html body #log .topbar .winbtns{order:9;flex:none}
 html body #log .topbar .wbtn{width:24px;height:22px;min-height:0}
 /* uploaded / SHIP: thinner still */
-html body #log #allclear{font-size:10.5px;padding:1px 7px}
-html body #log #ship-btn{font-size:10.5px;height:20px;min-height:20px!important;padding:0 9px}
+html body #log #allclear{font-size:11px;padding:1px 7px}
+html body #log #ship-btn{font-size:11px;height:20px;min-height:20px!important;padding:0 9px}
 @media (any-pointer:coarse){ html body #log #ship-btn{height:24px;min-height:24px!important} html body #log .topbar .wbtn{width:30px;height:28px} }
 
 /* MAC: BIGGER CARD TEXT AND BUTTONS, SAME 290 px PANE (Dustin 10/12: "make the property card a little larger"
    -> "Bigger text and buttons"). Last in the sheet so it wins over the compact rules above. */
 html body #log #card .toprow .seqbig{font-size:25px}
 html body #log #card .toprow{gap:6px;flex-wrap:nowrap}
-html body #log #card .areabig{font-size:10.5px;padding:4px 6px;gap:4px}
+html body #log #card .areabig{font-size:11px;padding:4px 6px;gap:4px}
 html body #log #card .areabig b{font-size:24px}
 html body #log #card .toprow .seqbig.s4{font-size:21px}   /* a 4-digit SEQ still fits beside AREA at 290 px */
 html body #log #card .addr{font-size:21.5px;margin-top:5px}
@@ -743,27 +753,27 @@ html body #log #card .details,html body #log #card .cardfoot .details{font-size:
 html body #log .stats{display:grid!important;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr)!important;gap:3px 4px!important;padding:5px 12px!important}
 html body #log .stat{display:flex;flex-direction:row;align-items:baseline;justify-content:center;gap:5px;padding:3px 2px!important;min-height:0!important;border-radius:7px}
 html body #log .stat .n{font-size:16px!important;line-height:1.1}
-html body #log .stat .l{font-size:9.5px!important;letter-spacing:0;line-height:1.1}
+html body #log .stat .l{font-size:11px!important;letter-spacing:0;line-height:1.1}
 html body #log .stat[data-f="pending"]{order:1}html body #log .stat[data-f="complete"]{order:2}html body #log .stat[data-f="all"]{order:3}
 html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="uploading"]{order:5}html body #log .stat[data-f="rating"]{order:6}
 #setup{margin:6px 8px;padding:8px 10px;border-radius:10px;background:#2a1d10;border:1px solid #c9822b;font-size:13px;line-height:1.35}
 #setup.ok{background:#10261a;border-color:#2ecc8a;padding:4px 10px}
-#setup .h{font-weight:700;margin-bottom:4px}
-#today-dd{margin:6px 8px;position:relative;font-family:system-ui}
-#today-dd .bar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:9px;background:#1f6fe5;color:#fff;font:800 13px system-ui;cursor:pointer}
-#today-dd .bar small{font:600 11.5px system-ui;color:#dfe9ff;margin-left:6px}
+#setup .h{font-weight:600;margin-bottom:4px}
+#today-dd{margin:6px 8px;position:relative;font-family:var(--sans)}
+#today-dd .bar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:9px;background:#1f6fe5;color:#fff;font:600 13px var(--sans);cursor:pointer}
+#today-dd .bar small{font:600 13px var(--sans);color:#dfe9ff;margin-left:6px}
 #today-dd .menu{display:none;position:absolute;left:0;right:0;top:34px;z-index:999;background:#151b36;border:1px solid #2b3466;border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 #today-dd.open .menu{display:block}
-#today-dd .h{font:900 10.5px system-ui;color:#9aa3c7;letter-spacing:.06em;margin:4px 6px}
-#today-dd .c{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;font:800 13px system-ui;color:#e6eaf5;cursor:pointer}
-#today-dd .c small{font:600 11px system-ui;color:#9aa3c7} #today-dd .c.on{background:#24306a} #today-dd .c.dim{opacity:.55;cursor:default}
-#today-dd .note{font:600 11px system-ui;color:#9aa3c7;margin:2px 8px 4px}
+#today-dd .h{font:700 11px var(--sans);color:#9aa3c7;letter-spacing:.06em;margin:4px 6px}
+#today-dd .c{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;font:600 13px var(--sans);color:#e6eaf5;cursor:pointer}
+#today-dd .c small{font:600 11px var(--sans);color:#9aa3c7} #today-dd .c.on{background:#24306a} #today-dd .c.dim{opacity:.55;cursor:default}
+#today-dd .note{font:600 11px var(--sans);color:#9aa3c7;margin:2px 8px 4px}
 #setup.calm{background:#2a2410;border-color:#f0a500;color:#ffe9b0;font-weight:600}
 #setup.calm .it{display:block}
-#shipq-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:948;max-width:calc(100% - 24px);width:360px;background:#e3ecff;color:#10224d;border:2px solid #5b8cff;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:700 13.5px/1.35 system-ui;display:none}
-#off-tag{position:absolute;top:12px;right:60px;z-index:950;background:#2b2f45;color:#e6eaf5;border:1px solid #5a6390;border-radius:999px;padding:6px 12px;font:800 12.5px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;pointer-events:none}
+#shipq-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:948;max-width:calc(100% - 24px);width:360px;background:#e3ecff;color:#10224d;border:2px solid #5b8cff;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:600 13.5px/1.35 var(--sans);display:none}
+#off-tag{position:absolute;top:12px;right:60px;z-index:950;background:#2b2f45;color:#e6eaf5;border:1px solid #5a6390;border-radius:999px;padding:6px 12px;font:600 12.5px var(--sans);box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;pointer-events:none}
 #setup .it{display:flex;gap:6px;margin:3px 0}
-#setup .it .m{flex:0 0 18px;font-weight:700}
+#setup .it .m{flex:0 0 18px;font-weight:600}
 #setup .it.ok .m{color:#2ecc8a} #setup .it.bad .m{color:#ff6b6b}
 #setup .it .fx{color:#d9c7a8;font-size:12px}
 #setup .it .sh{display:none}
@@ -781,7 +791,7 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
   html body #log #card .areabig{padding:3px 6px}
   html body #log #card .addr{font-size:18px;line-height:1.15;margin-top:3px}
   html body #log #card .city{font-size:14px;margin-top:0}
-  html body #log #card .pid{font-size:12px;margin-top:1px}
+  html body #log #card .pid{font-size:13px;margin-top:1px}
   html body #log #card .aerfloat{height:26px;font-size:13px}
   html body #log .navbtns,html body #log .acts{margin-top:5px!important}
   html body #log .navbtns .aerbtn{min-height:40px!important;height:40px;font-size:14.5px!important;padding:2px 4px!important}
@@ -887,7 +897,7 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
   <p>The field log on the laptop. The camera phone works exactly as before.</p>
   <div id="signin-block">
     <label class="hint">Driver initials</label>
-    <input id="in-drv" maxlength="4" placeholder="RF" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:800 20px var(--font-display);padding:9px 10px;text-transform:uppercase">
+    <input id="in-drv" maxlength="4" placeholder="RF" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 20px var(--font-display);padding:9px 10px;text-transform:uppercase">
     <label class="hint" style="display:block;margin-top:10px">Driver key (from your camera link, once only)</label>
     <input id="in-key" placeholder="already saved on this laptop" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 15px ui-monospace,Consolas,monospace;padding:9px 10px">
   </div>
@@ -933,7 +943,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p56';
+var DESK_BUILD = 'desk-p57';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1486,15 +1496,18 @@ function rebuildLogs(){
   Object.keys(out).forEach(function(k){ if (!out[k].seq) out[k].seq = k; if (_shippedSeqs[k]) { out[k].shipped = true; out[k].shippedAt = _shippedSeqs[k]; } });
   state.logs = out;
 }
-// ── SAME ADDRESS = ONE STOP ON THE MAP (Dustin 2026-10-11) ─────────────────────
-// "if two parcels share the same address, I should only be seeing that as one sequence
-// number ... it's one drive". The drive file is unchanged (every seq stays its own client
-// row; Richie's phone and Maptitude read the same file). Only the desk draws the group as
-// ONE pin and ONE list row, at the lowest seq, labelled "230 +1". Its colour is the worst
-// member's (red beats blue beats green); it leaves the map only when every member is
-// cleared.
+// ── ONE PROPERTY = ONE STOP ON THE MAP (Dustin 2026-10-11, rule changed 10/30) ────────
+// The desk draws a BATCH as ONE pin and ONE list row, labelled "230 +1"; every seq stays its
+// own client row. Its colour is the worst member's (red beats blue beats green); it leaves the
+// map only when every member is cleared.
+// desk-p55 (Dustin 10/30, Stark 1032/1034/1035): a batch is ONE PROPERTY ON THE AERIAL, never
+// matching address text or distance. The server stamps it (functions/propertygroup.js, written
+// into <bucket>.boundaries.geojson as properties.group): parcels batch only when one building
+// footprint lies across their touching outlines (or the same parcel is on several rows). The
+// pin sits on the parcel holding the structure (_grpPin), not on the lowest seq. An outline
+// file without the stamp batches nothing.
 var _GRANK = { incomplete: 4, pending: 3, marked: 2.5, worked: 2, uploading: 2, rating: 1, complete: 0 };
-function pinKey(seq){ var g = sameAddrSeqs(seq); return g ? String(g[0]) : String(seq); }
+function pinKey(seq){ var g = sameAddrSeqs(seq); return g ? String(_grpPin[String(parseInt(seq, 10))] || g[0]) : String(seq); }
 function liveMap(){ var m = {}; listable().forEach(function(r){ m[String(r.seq)] = 1; }); return m; }
 function groupSeqs(seq, live){ var g = sameAddrSeqs(seq) || [String(seq)]; return live ? g.filter(function(x){ return live[String(x)]; }) : g.slice(); }
 function worstStatus(seqs){ var w = null; seqs.forEach(function(x){ var st = displayStatus(x); if (w === null || _GRANK[st] > _GRANK[w]) w = st; }); return w || 'complete'; }
@@ -1810,8 +1823,8 @@ function _netBanner(on){
     var mw = document.getElementById('mapwrap'), inMap = !!(mw && mw.clientWidth >= 420);
     b.style.cssText = 'position:' + (inMap ? 'absolute' : 'fixed') + ';left:50%;top:64px;transform:translateX(-50%);z-index:1500;max-width:min(560px,calc(100% - 32px));'
       + 'background:#2b2a1c;border:1px solid #b9a24a;color:#f4ecc8;border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.45);'
-      + 'font:600 14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;pointer-events:none';
-    b.innerHTML = '<b style="font-weight:800">Laptop is offline</b> — reconnect Wi-Fi to your iPhone hotspot.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>';
+      + 'font:600 14px/1.35 var(--sans)"Segoe UI",sans-serif;text-align:center;pointer-events:none';
+    b.innerHTML = '<b style="font-weight:600">Laptop is offline</b> — reconnect Wi-Fi to your iPhone hotspot.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>';
     (inMap ? mw : document.body).appendChild(b);
   }
   if (b) b.style.display = on ? 'block' : 'none';
@@ -1967,8 +1980,9 @@ function publishJob(){
 function publishMasterSeqs(){   // the camera validates seqs against this (same lite shape as the phone)
   if (!link || !link.connected || !state.seqs.length || _jobPublishedFor !== _jobSig()) return;
   var live = state.seqs.filter(function(s){ try { return !_drivenOnAnEarlierDay(s.seq); } catch(e) { return true; } });
-  var lite = live.map(function(s){ return { seq:s.seq, parcelId:s.parcelId||'', street:s.street||'', city:s.city||'', propState:s.propState||'', zip:s.zip||'', lat:s.lat||'', lng:s.lng||'', area:s.area||'' }; });
-  var sig = state.job.bucket + ':' + lite.length;
+  var lite = live.map(function(s){ return { seq:s.seq, parcelId:s.parcelId||'', street:s.street||'', city:s.city||'', propState:s.propState||'', zip:s.zip||'', lat:s.lat||'', lng:s.lng||'', area:s.area||'',
+    grp: _grpPin[String(parseInt(s.seq, 10))] || '' }; });   /* grp = the batch's pin seq (one property), '' = not batched */
+  var sig = state.job.bucket + ':' + lite.length + ':' + _grpSig;
   if (sig === _publishedFor) return;
   link.set('masterSeqs', lite).then(function(){ _publishedFor = sig; }).catch(function(){});
 }
@@ -2113,43 +2127,45 @@ async function startDay(job, seqs, opt){
 function restoreSnap(s){ _serverLogs = s.logs || {}; _photoCountsRaw = s.pcRaw || {}; _photoCountsJob = s.pcJob || ''; _camSync = s.sync || _camSync; _shippedSeqs = s.shipped || {}; _jobDriven = s.jobDriven || {}; _cameraSeq = s.cam || null; rebuildLogs(); applyPhotoCounts(); }
 function indexRows(){
   _rowIdx = {}; state.seqs.forEach(function(r){ _rowIdx[String(parseInt(r.seq, 10))] = r; });
-  // SAME ADDRESS: 2+ seqs at one street + city are called as a BATCH (Dustin 10/11: "This is a batch not a multiple"; camera says ★ BATCH)
-  // 10/27 (Richie): same address text is NOT enough. "AERIAL Confidential" rows (no street address, located from the
-  // aerial) were one 17-seq batch across 36 km of Richland. A batch = same address text AND each parcel's own lat/long
-  // within BATCH_M of another in the group. Placeholder addresses (AERIAL…) never batch — every one is its own pin.
-  var BATCH_M = 150, grp = {}; _sameAddr = {};
-  var _placeholder = function(st){ return /^(AERIAL|CONFIDENTIAL|NOADDRESS|NONE|UNKNOWN|VACANT|0)/.test(st); };
-  state.seqs.forEach(function(r){ var st = String(r.street || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    var k = st + '|' + String(r.city || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (st.length > 1 && !_placeholder(st)) (grp[k] = grp[k] || []).push(r); });   // AERIAL rows never batch: each keeps its own pin at its own lat/long
-  var _m = function(a, b){ var R = 6371000, d = Math.PI / 180, x = (b[0] - a[0]) * d, y = (b[1] - a[1]) * d;
-    var h = Math.sin(x / 2) * Math.sin(x / 2) + Math.cos(a[0] * d) * Math.cos(b[0] * d) * Math.sin(y / 2) * Math.sin(y / 2); return 2 * R * Math.asin(Math.sqrt(h)); };
-  Object.keys(grp).forEach(function(k){ var rows = grp[k]; if (rows.length < 2) return;
-    var left = rows.slice(), clusters = [];   // single-link: a parcel joins a cluster if it is within BATCH_M of any member
-    while (left.length) { var c = [left.shift()], grew = true;
-      while (grew) { grew = false; for (var i = left.length - 1; i >= 0; i--) { var p = ll(left[i]);
-        if (c.some(function(q){ var pq = ll(q); return (!p || !pq) ? !(p || pq) : _m(p, pq) <= BATCH_M; })) { c.push(left.splice(i, 1)[0]); grew = true; } } }
-      clusters.push(c); }
-    clusters.forEach(function(c){ if (c.length < 2) return; var l = c.map(function(r){ return String(r.seq); }).sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); });
-      l.forEach(function(sq){ _sameAddr[String(parseInt(sq, 10))] = l; }); }); });
+  _rebuildGroups();   /* desk-p55: batches come ONLY from the server's one-property stamp (see ONE PROPERTY above) */
   if (state.job) loadBounds(state.job.bucket);
 }
-var _sameAddr = {};
+var _sameAddr = {}, _grpPin = {}, _grpSig = '';
 function sameAddrSeqs(seq){ return _sameAddr[String(parseInt(seq, 10))] || null; }
+/* rows that share one stamped group (Bnd.groupOf: parcel -> the pin parcel) form a batch; returns true when it changed */
+function _rebuildGroups(){
+  var by = {}, out = {}, pin = {};
+  if (state.job && Bnd.bucket === state.job.bucket && Bnd.grouped) {
+    state.seqs.forEach(function(r){ var g = Bnd.groupOf[_normPid(r.parcelId)]; if (g) (by[g] = by[g] || []).push(r); });
+  }
+  Object.keys(by).forEach(function(g){
+    var rows = by[g]; if (rows.length < 2) return;
+    var l = rows.map(function(r){ return String(parseInt(r.seq, 10)); }).sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); });
+    var ps = rows.filter(function(r){ return _normPid(r.parcelId) === g; }).map(function(r){ return String(parseInt(r.seq, 10)); })
+      .sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); });
+    var p = ps.length ? ps[0] : l[0];
+    l.forEach(function(sq){ out[sq] = l; pin[sq] = p; });
+  });
+  _sameAddr = out; _grpPin = pin;
+  var sig = Object.keys(pin).sort().map(function(k){ return k + '>' + pin[k]; }).join(',');
+  var changed = sig !== _grpSig; _grpSig = sig; return changed;
+}
 // ── PARCEL OUTLINES (offline): <bucket>.boundaries.geojson, keyed by PARCEL ID ──
-var Bnd = { bucket: null, byPid: {}, n: 0, ver: 0 };
+var Bnd = { bucket: null, byPid: {}, n: 0, ver: 0, groupOf: {}, grouped: false };
 function _ringsOf(geom){
   if (!geom) return [];
   var polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
   return polys.map(function(p){ return (p[0] || []).map(function(c){ return [c[1], c[0]]; }); });   // outer ring, [lat,lng]
 }
 function _indexBounds(bucket, fc){
-  var by = {}, n = 0;
+  var by = {}, n = 0, grp = {}, grouped = !!(fc && fc.propertyGroups);
   ((fc && fc.features) || []).forEach(function(f){ var pid = _normPid(f && f.properties && f.properties.pid); var rings = _ringsOf(f && f.geometry);
+    if (pid && grouped && f.properties.group) grp[pid] = _normPid(f.properties.group);
     if (!pid || !rings.length) return; var la = [], lo = [];
     rings.forEach(function(r){ r.forEach(function(c){ la.push(c[0]); lo.push(c[1]); }); });
     by[pid] = { rings: rings, bb: [Math.min.apply(null, la), Math.min.apply(null, lo), Math.max.apply(null, la), Math.max.apply(null, lo)] }; n++; });
-  Bnd = { bucket: bucket, byPid: by, n: n, ver: Bnd.ver + 1 };
+  Bnd = { bucket: bucket, byPid: by, n: n, ver: Bnd.ver + 1, groupOf: grp, grouped: grouped };
+  if (_rebuildGroups() && map) buildMarkers();   /* the batches arrive with the outline file */
   renderCacheStatus(); renderAll();
 }
 async function storeBounds(bucket, fc){ try { await DB.put('kv', 'bounds:' + bucket, fc); } catch (e) {} _indexBounds(bucket, fc); }
@@ -2266,7 +2282,7 @@ function renderList(){
     if ((ord === 'near' || ord === 'view') && _from) { var dd = _dist[a.seq] - _dist[b.seq]; if (dd) return dd; }
     return parseInt(a.seq, 10) - parseInt(b.seq, 10);
   });
-  // SAME ADDRESS: one row per group (the lowest seq), kept where its first member sorted
+  // ONE PROPERTY: one row per group (its pin parcel), kept where its first member sorted
   var _seenK = {}, _live = liveMap();
   rows = rows.map(function(r){ return _rowFor(pinKey(r.seq)) || r; }).filter(function(r){ var k = String(r.seq); if (_seenK[k]) return false; _seenK[k] = 1; return true; });
   _listOrder = rows.map(function(r){ return String(r.seq); });
@@ -2399,7 +2415,7 @@ function renderCard(){
       (area !== '--' ? '<span class="areabig" title="Area rating for this parcel">AREA <b>' + area + '</b></span>' : '') + '</div>' +
       '<button class="aerbtn aerfloat" id="card-aer" title="Open this parcel\'s aerial, large (A)">▣ Aerial <kbd>A</kbd></button>' + '<div class="addr">' + esc(r.street || '(no address)') + '</div>' + (r.city || r.zip ? '<div class="city">' + esc([r.city, r.zip].filter(Boolean).join(' ')) + '</div>' : '') +
       '<div class="pid">' + esc(r.parcelId) + (r.landUse ? ' · ' + esc(r.landUse) : '') + ' · photos ' + pc + (shot > pc ? ' of ' + shot : '') + '</div>' +
-      (sameAddrSeqs(seq) ? '<div class="multi">SAME ADDRESS · one stop, a BATCH · each seq its own client row</div><div>' +
+      (sameAddrSeqs(seq) ? '<div class="multi">ONE PROPERTY · one stop, a BATCH · each seq its own client row</div><div>' +
         sameAddrSeqs(seq).map(function(x){ var sx = displayStatus(x); return '<button class="gmem' + (String(x) === String(seq) ? ' on' : '') + '" data-seq="' + esc(x) + '"><span class="dot ' + sx + '"></span>' + esc(x) + ' · ' + ST_LABEL[sx] + '</button>'; }).join('') + '</div>' : '') +
       (pinWarn(r) ? '<div class="warnchip">⚠ Pin may be off: ' + esc(pinWarn(r)) + '</div>' : '') +
     '</div></div>' +
@@ -2477,7 +2493,7 @@ function renderSetup(){
   var st = setupState(), items = SETUP_ITEMS.filter(function(it){ return st[it[0]] !== null; });
   var good = items.filter(function(it){ return st[it[0]]; }).length;
   el.style.display = '';
-  if (good === items.length) { el.className = 'ok'; el.innerHTML = '<span style="color:#2ecc8a;font-weight:700">✓ Ready to drive</span>' + (st.battery != null ? ' <span style="color:#8a90a6">· battery ' + st.battery + '%</span>' : ''); return; }
+  if (good === items.length) { el.className = 'ok'; el.innerHTML = '<span style="color:#2ecc8a;font-weight:600">✓ Ready to drive</span>' + (st.battery != null ? ' <span style="color:#8a90a6">· battery ' + st.battery + '%</span>' : ''); return; }
   // desk-p43 (Dustin 10/27, approved): once the day has started, the card never tells a driver to stop. It shows only
   // what is off, one calm line each, and that the laptop fixes itself. The full checklist is for the morning only.
   if (_dayStarted()) {
@@ -2890,7 +2906,7 @@ function buildMarkers(){
   var pts = [];
   state.seqs.forEach(function(r){
     var p = ll(r); if (!p) return; pts.push(p);
-    var g = sameAddrSeqs(r.seq); if (g && pinKey(r.seq) !== String(r.seq)) return;   // SAME ADDRESS: one pin per group, at its lowest seq
+    var g = sameAddrSeqs(r.seq); if (g && pinKey(r.seq) !== String(r.seq)) return;   /* ONE PROPERTY: one pin per group, on the parcel holding the structure */
     /* desk-p52: the "+N" of a batch is now the live count badge (renderMapState), shared with stacked spots */
     var m = L.marker(p, { icon: L.divIcon({ className: '', html: '<div class="pin pending"><span>' + esc(r.seq) + '</span></div>', iconSize: [0, 0] }), keyboard: false, title: 'SEQ ' + (g ? g.join(', ') : r.seq) + ' · ' + r.street });
     _stkP0[String(r.seq)] = map.project(p, 0);   /* zoom-0 pixels: any zoom is these x 2^z, so stacks cost no projection */
@@ -3807,7 +3823,7 @@ function _dpSetEnd(lat, lng, label){
 function _dpDrawEnd(){
   if (!map) return; var e = _dpOn() ? _dpEnd() : null;
   if (!e) { if (_dpEndMarker) { map.removeLayer(_dpEndMarker); _dpEndMarker = null; } return; }
-  var ic = L.divIcon({ className: '', html: '<div style="font:900 22px/1 system-ui;filter:drop-shadow(0 1px 2px #000);margin:-22px 0 0 -4px">🏁</div>', iconSize: [0, 0] });
+  var ic = L.divIcon({ className: '', html: '<div style="font:700 22px/1 var(--sans);filter:drop-shadow(0 1px 2px #000);margin:-22px 0 0 -4px">🏁</div>', iconSize: [0, 0] });
   if (!_dpEndMarker) _dpEndMarker = L.marker([e.lat, e.lng], { icon: ic, interactive: false, keyboard: false, zIndexOffset: 3000 }).addTo(map); else _dpEndMarker.setLatLng([e.lat, e.lng]);
 }
 var _dpPicking = false;
@@ -3969,7 +3985,7 @@ function bootLinkAndMap(){
         link[m] = function(path){ return (/^desk/.test(String(path || '')) && Q.get('livetest') === '1') ? real.apply(null, arguments) : Promise.resolve(null); };
       });
       try { var _lb = document.createElement('div'); _lb.id = 'look-banner'; _lb.textContent = 'LOOK-ONLY: explore freely. Nothing you do here changes your drive.';
-        _lb.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;background:#5b2d91;color:#fff;font:800 12.5px system-ui;padding:3px 12px;border-radius:0 0 8px 8px;pointer-events:none';
+        _lb.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;background:#5b2d91;color:#fff;font:600 12.5px var(--sans);padding:3px 12px;border-radius:0 0 8px 8px;pointer-events:none';
         document.body.appendChild(_lb); } catch (e) {}
     }
     link.start(DRIVER, function(){ renderLink(); renderShipGate(); if (link.connected) { flushOutbox(); publishJob(); publishMasterSeqs(); } });
@@ -4232,7 +4248,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     _dc.onmessage = function(ev){ var m = ev.data || {};
       if (m.t === 'hello' && m.id !== _me && !window.__deskRetired) _dc.postMessage({ t: 'here', to: m.id });
       else if (m.t === 'takeover' && m.from !== _me) { window.__deskRetired = true;
-        try { document.title = 'Desk moved'; document.body.innerHTML = '<div style="font:600 18px system-ui;color:#ccc;padding:40px">The desk moved to another tab. You can close this one.</div>'; } catch (e) {}
+        try { document.title = 'Desk moved'; document.body.innerHTML = '<div style="font:600 18px var(--sans);color:#ccc;padding:40px">The desk moved to another tab. You can close this one.</div>'; } catch (e) {}
         try { location.replace('about:blank'); } catch (e) {} }
       else if (m.t === 'here' && m.to === _me && !window.__deskDup) { window.__deskDup = true;
         confirmBox('The desk is already open', 'Another Chrome tab has the desk open, maybe in a window you cannot see. Use this tab and the other one closes its desk. (Your unsent changes are kept.)', 'Use this tab').then(function(ok){
