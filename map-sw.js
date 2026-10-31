@@ -12,7 +12,7 @@
 // desk-p51 (10/28 PM, Ohio: counties with no service for hours): with no signal ANY page of this site opens the saved
 // map — a reload, the bare address (Chrome's Home button), a new tab, the map's own self-update — never Chrome's error page.
 const C = 'map-v1';
-const V = 'sw2';
+const V = 'sw3';
 const SHELL = ['/map.html', '/desk/vendor/leaflet.css', '/desk/vendor/leaflet.js', '/desk/vendor/xlsx.full.min.js',
   '/desk/imagery.js', '/desk/roadlabels.js', '/desk/ask.js', '/desk/route.js', '/desk/p2p.js'];
 const BUILD_KEYED = ['/desk/imagery.js', '/desk/roadlabels.js', '/desk/ask.js', '/desk/route.js'];
@@ -40,7 +40,12 @@ self.addEventListener('install', (e) => {
 });
 self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('message', (e) => { if (e.data && e.data.type === 'refresh-shell') e.waitUntil((async () => { const c = await caches.open(C);
-  await Promise.all(SHELL.filter((u) => u !== '/map.html').map((u) => fresh(u).then((r) => save(c, u, r)).catch(() => {}))); })()); });
+  await Promise.all(SHELL.filter((u) => u !== '/map.html').map((u) => fresh(u).then((r) => save(c, u, r)).catch(() => {})));
+  /* sw3: the saved map is a build behind the site: fetch it again with no time limit (a failed save is retried on the next load) */
+  try { const h = await c.match('/map.html'); const sb = h ? await buildOf(h) : ''; const cur = (await (await fresh('/build-desk.txt')).text()).trim();
+    if (/^desk-p\w+$/.test(cur) && cur !== sb) { const r = await fresh('/map.html'); const nb = await buildOf(r.clone());
+      if (nb === cur) { const ok = await save(c, '/map.html', r); await saveScripts(c, nb); diag('resave', sb + '>' + nb + (ok ? ' saved' : ' save failed')); } } } catch (err) {}
+  })()); });
 // desk/*.js carry ?b=<build>: the build is part of the key, so a new build never runs last build's script (audit #6)
 const key = (u) => { const x = new URL(u); return x.origin === self.location.origin ? x.pathname + (/^\/desk\//.test(x.pathname) ? x.search : '') : x.href; };
 self.addEventListener('fetch', (e) => {
