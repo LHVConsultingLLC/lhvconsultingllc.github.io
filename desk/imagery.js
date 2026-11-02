@@ -823,7 +823,8 @@
         chrome: OP.ok ? { store: storeLine(), files: OP.files || null, gone: _gone.slice(-6), wanted: wanted(), packs: (function () { var o = {}; Object.keys(OP.st).forEach(function (n) { var x = OP.st[n];
           o[n.replace(/\./g, '_')] = { copied: x.copied || 0, total: x.total || 0, done: !!x.done, ms: x.ms == null ? null : x.ms, msFolder: x.msFolder == null ? null : x.msFolder,
             secs: x.secs || 0, wait: x.wait || '', err: x.err || '', via: x.via || '' }; }); return o; })() } : { store: storeLine() },
-        speed: window.SpeedLim ? { loaded: window.SpeedLim.loaded(), segs: window.SpeedLim.count() } : null };
+        speed: window.SpeedLim ? { loaded: window.SpeedLim.loaded(), segs: window.SpeedLim.count() } : null,
+        aerial: { made: PA.made, check: PA.check } };
       var sig = JSON.stringify(o); if (sig === _repSig && Date.now() - _repAt < 300000) return;
       if (Date.now() - _repAt < 20000 && sig !== _repSig && _repSig) return;   /* a copy in progress: at most every 20 s */
       if (!(window.link && window.link.connected)) return;   // not sent = not remembered: the next tick retries (10/19)
@@ -914,7 +915,26 @@
     PA.made++;
     return await new Promise(function (res) { try { cv.toBlob(function (b) { res(b); }, 'image/jpeg', 0.9); } catch (e) { res(null); } });
   }
-  var PA = { made: 0 };
+  var PA = { made: 0, check: null };
+  /* desk-p63: the office sees that the parcel aerials work on this laptop without anyone opening one: once the county's
+     pack is open, one parcel's aerial (the selected one, else the first) is made in the background and reported with
+     the pack report (deskPacks.aerial). Nothing on screen. */
+  var _paChecked = {};
+  setInterval(function () {
+    try {
+      var b = _bucket, pk = P.imagery.pk; if (!b || !pk || _paChecked[b]) return;
+      var st = window.state; if (!st || !st.seqs || !st.seqs.length) return;
+      var r = (st.currentSeq && window._rowFor && window._rowFor(st.currentSeq)) || st.seqs[0];
+      var la = parseFloat(r.lat), lo = parseFloat(r.lng); if (!isFinite(la) || !isFinite(lo)) return;
+      _paChecked[b] = 1; var t0 = Date.now(), bd = null; try { bd = window.boundsFor ? window.boundsFor(r.seq) : null; } catch (e) {}
+      var made0 = PA.made;
+      parcelAerial({ lat: la, lng: lo, rings: bd ? bd.rings : null, bb: bd ? bd.bb : null }).then(function (bl) {
+        PA.made = made0;   /* the check itself is not counted as a driver opening one */
+        PA.check = { bucket: b, seq: String(r.seq), ok: !!bl, kb: bl ? Math.round(bl.size / 1024) : 0, ms: Date.now() - t0, opfs: !!pk.opfs, at: Date.now() };
+        refreshStatus(); setTimeout(refreshStatus, 25000);   /* the report holds back within 20 s of the last one */
+      }, function (e) { PA.check = { bucket: b, seq: String(r.seq), ok: false, err: String(e && e.message || e).slice(0, 80), at: Date.now() }; refreshStatus(); });
+    } catch (e) {}
+  }, 15000);
   window.DeskImagery = {
     parcelAerial: function (o) { return parcelAerial(o).catch(function (e) { console.warn('parcel aerial', e); return null; }); },
     aerialStats: function () { return PA; },
