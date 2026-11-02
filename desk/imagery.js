@@ -99,7 +99,9 @@
   function has(K, z, x, y) {     // the pack draws this square (native, or overzoomed from its top zoom)
     var pk = K.pk; if (!pk || z < pk.minZ) return false;
     while (z > pk.maxZ) { z--; x = Math.floor(x / 2); y = Math.floor(y / 2); }
-    return pk.idx.has(zxyId(z, x, y));
+    if (!pk.partial) return pk.idx.has(zxyId(z, x, y));
+    var r = pk.idx.get(zxyId(z, x, y)); if (!r) return false;
+    return r[0] + r[1] <= pk.upto() || netOK(pk.name);
   }
   function emptyTile(done) { var d = document.createElement('div'); setTimeout(function () { done(null, d); }, 0); return d; }
 
@@ -111,16 +113,39 @@
   function underTile(pk, c, done) {
     var n = Math.pow(2, pk.minZ - c.z), cv = document.createElement('canvas'); cv.width = cv.height = 256;
     var g = cv.getContext('2d'), sz = 256 / n, want = [], left;
-    for (var i = 0; i < n; i++) for (var j = 0; j < n; j++) { var r = pk.idx.get(zxyId(pk.minZ, c.x * n + i, c.y * n + j)); if (r) want.push([i, j, r]); }
+    for (var i = 0; i < n; i++) for (var j = 0; j < n; j++) { var r = pk.idx.get(zxyId(pk.minZ, c.x * n + i, c.y * n + j)); if (r && (!pk.partial || r[0] + r[1] <= pk.upto())) want.push([i, j, r]); }
     if (!want.length) return emptyTile(done);
     left = want.length;
     want.forEach(function (w) {
-      var img = new Image(), url = URL.createObjectURL(pk.blob.slice(w[2][0], w[2][0] + w[2][1], pk.mime || 'image/jpeg'));
-      img.onload = function () { try { g.drawImage(img, w[0] * sz, w[1] * sz, sz, sz); } catch (e) {} URL.revokeObjectURL(url); if (--left === 0) done(null, cv); };
-      img.onerror = function () { URL.revokeObjectURL(url); if (--left === 0) done(null, cv); };
-      img.src = url;
+      var img = new Image();
+      var put = function (blob) { var url = URL.createObjectURL(blob);
+        img.onload = function () { try { g.drawImage(img, w[0] * sz, w[1] * sz, sz, sz); } catch (e) {} URL.revokeObjectURL(url); if (--left === 0) done(null, cv); };
+        img.onerror = function () { URL.revokeObjectURL(url); if (--left === 0) done(null, cv); };
+        img.src = url; };
+      if (!pk.partial) return put(pk.blob.slice(w[2][0], w[2][0] + w[2][1], pk.mime || 'image/jpeg'));
+      localRead(pk.name, w[2][0], w[2][0] + w[2][1]).then(function (b) { if (b && b.byteLength >= w[2][1]) put(new Blob([b], { type: pk.mime || 'image/jpeg' })); else if (--left === 0) done(null, cv); },
+        function () { if (--left === 0) done(null, cv); });
     });
     return cv;
+  }
+  /* desk-p60 (MT 11/1 Clark: "I didn't have any aerials ... super slow to pull up"): a pack still being copied into Chrome
+     is drawn from what is already there. A tile already copied comes from Chrome; a tile not yet copied comes from the
+     server's own pack (the same file, one small HTTP Range read, nearest the middle of the screen first, as the map asks);
+     with no signal or a failing link the live NAIP layer underneath takes the tile. Never a blank aerial where Chrome has it. */
+  function partialTile(pk, c, r, done) {
+    var img = document.createElement('img'); img.alt = ''; img.setAttribute('role', 'presentation');
+    var local = r[0] + r[1] <= pk.upto();
+    (local ? localRead(pk.name, r[0], r[0] + r[1]) : Promise.resolve(null)).then(function (buf) {
+      if (buf && buf.byteLength >= r[1]) { PT.local++; return buf; }
+      if (!netOK(pk.name)) throw new Error('no link');
+      return netTile(pk.name, r[0], r[0] + r[1]).then(function (b) { PT.net++; return b; });
+    }).then(function (buf) {
+      var url = URL.createObjectURL(new Blob([buf], { type: pk.mime || 'image/jpeg' }));
+      img.onload = function () { URL.revokeObjectURL(url); done(null, img); };
+      img.onerror = function () { URL.revokeObjectURL(url); PT.bad++; done(new Error('pack tile'), img); };
+      img.src = url;
+    }).catch(function () { PT.miss++; img.style.visibility = 'hidden'; done(new Error('tile not here yet'), img); });
+    return img;
   }
   var PackLayer = L.GridLayer.extend({
     createTile: function (c, done) {
@@ -128,6 +153,7 @@
       if (pk && this._under && c.z < pk.minZ) return underTile(pk, c, done);
       var r = pk && pk.idx.get(zxyId(c.z, c.x, c.y));
       if (!r) return emptyTile(done);               // nothing here: the layer below shows
+      if (pk.partial) return partialTile(pk, c, r, done);
       var img = document.createElement('img'); img.alt = ''; img.setAttribute('role', 'presentation');
       var url = URL.createObjectURL(pk.blob.slice(r[0], r[0] + r[1], pk.mime || 'image/jpeg'));
       img.onload = function () { URL.revokeObjectURL(url); done(null, img); };
@@ -356,7 +382,8 @@
   // THE WORKER: one file at a time, 8 MB pieces, written in place at their offset (so a stop resumes from the
   // copy's own size). 'pause' stops it between pieces; 'gap' sets the rest between pieces (0 when the map is idle).
   var WSRC = [
-    'var stop = {}, gap = {}, mult = {}, hold = {};',
+    'var stop = {}, gap = {}, mult = {}, hold = {}, H = {};',
+    '/* desk-p60: while a copy holds the file, the map reads its copied tiles through this same handle (op read) */',
     '/* desk-p54: one 8 MB piece of the server\'s pack by HTTP Range; a dropped piece is asked again (4 tries), a refused link ends the copy */',
     '/* desk-p59 (MT 10/31: Morrow sat at 0.03G "copying" for 30+ min on desk-p58 = a request the hotspot left hanging, never',
     '   ended): the body is read as it arrives; no bytes for STALL ms (30 s), or a pause, drops the request and it is asked again */',
@@ -384,6 +411,9 @@
     '  }',
     '}',
     'onmessage = async function (e) { var m = e.data;',
+    '  if (m.op === "read") { var hh = H[m.name]; if (!hh) { postMessage({ rid: m.rid, miss: 1 }); return; }',
+    '    try { var rb = new Uint8Array(m.b - m.a), rn = hh.read(rb, { at: m.a }); postMessage({ rid: m.rid, buf: rb.buffer, n: rn }, [rb.buffer]); } catch (x) { postMessage({ rid: m.rid, miss: 1 }); }',
+    '    return; }',
     '  if (m.op === "pause") { stop[m.name] = 1; return; }',
     '  if (m.op === "gap") { gap[m.name] = m.gap; mult[m.name] = m.mult || 0; return; }',
     '  if (m.op === "hold") { hold[m.name] = !!m.on; return; }',
@@ -394,7 +424,7 @@
     '  try {',
     '    var root = await navigator.storage.getDirectory(), dir = await root.getDirectoryHandle("packs", { create: true });',
     '    var fh = await dir.getFileHandle(m.name, { create: true });',
-    '    h = await fh.createSyncAccessHandle();',
+    '    h = await fh.createSyncAccessHandle(); H[m.name] = h;',
     '    var size = m.file ? m.file.size : m.size;',
     '    pos = h.getSize();',
     '    if (m.fresh || pos > size) { h.truncate(0); pos = 0; }',
@@ -416,23 +446,95 @@
     '      var rest = Math.max(gap[m.name] || 0, (mult[m.name] || 0) * ms), until = Date.now() + rest;',
     '      while (Date.now() < until && !stop[m.name]) await new Promise(function (r) { setTimeout(r, Math.min(500, until - Date.now())); });',
     '    }',
-    '    h.flush(); h.close(); h = null;',
+    '    h.flush(); delete H[m.name]; h.close(); h = null;',
     '    postMessage({ name: m.name, pos: pos, end: true, done: pos >= size, clean: pos });',
     '  } catch (err) {',
-    '    var cl = null; try { if (h) { h.flush(); pos = h.getSize(); h.close(); cl = pos; } } catch (x) {}',
+    '    var cl = null; delete H[m.name]; try { if (h) { h.flush(); pos = h.getSize(); h.close(); cl = pos; } } catch (x) {}',
     '    postMessage({ name: m.name, pos: pos, end: true, clean: /short write|Quota|space/i.test(String(err && err.message)) ? null : cl, err: String((err && err.name) || "Error") + ": " + String((err && err.message) || err).slice(0, 120) });',
     '  }',
     '};'
   ].join('\n');
+  // ── A PACK STILL COPYING (desk-p60) ── what is copied is read from Chrome: through the copying worker's own handle while
+  // a copy runs (Chrome locks the file to it), else from a snapshot of the file (taken again when the copy has moved on).
+  var RD = {}, _rid = 0, SNAP = {}, PT = { local: 0, net: 0, miss: 0, bad: 0 }, NT = { fails: 0, failAt: 0, redrawAt: 0 };
+  function workerRead(name, a, b) {
+    if (!OP.w) return Promise.resolve(null);
+    return new Promise(function (res) { var id = ++_rid; RD[id] = res;
+      setTimeout(function () { if (RD[id]) { delete RD[id]; res(null); } }, 4000);
+      OP.w.postMessage({ op: 'read', rid: id, name: name, a: a, b: b }); });
+  }
+  async function snapRead(name, a, b) {
+    for (var t = 0; t < 2; t++) {
+      try { var f = SNAP[name];
+        if (!f || f.size < b) f = SNAP[name] = await (await (await opDir()).getFileHandle(name)).getFile();
+        if (f.size < b) return null;
+        return await f.slice(a, b).arrayBuffer(); } catch (e) { SNAP[name] = null; }   /* the copy changed the file: a new snapshot */
+    }
+    return null;
+  }
+  async function localRead(name, a, b) {
+    var st = OP.st[name];
+    if (st && st.copying) { var w = await workerRead(name, a, b); if (w && w.buf && w.n >= b - a) return w.buf; }
+    return snapRead(name, a, b);
+  }
+  function netOK(name) {
+    var c = NET[name]; if (!(c && c.r && c.r.link)) return false;
+    if (sigNow() === 'no signal') return false;
+    return !(NT.fails >= 3 && Date.now() - NT.failAt < 60000);
+  }
+  async function netTile(name, a, b) {   // one tile's bytes from the server's pack (HTTP Range), 15 s at most
+    var c = NET[name], u = c && c.r && c.r.link; if (!u) throw new Error('no link');
+    var ac = new AbortController(), tm = setTimeout(function () { try { ac.abort(); } catch (e) {} }, 15000);
+    try {
+      var r = await fetch(u, { headers: { Range: 'bytes=' + a + '-' + (b - 1) }, cache: 'no-store', signal: ac.signal });
+      if (r.status !== 206) { try { ac.abort(); } catch (e) {} if (r.status >= 400 && r.status < 500) delete NET[name]; throw new Error('HTTP ' + r.status); }
+      var buf = await r.arrayBuffer(); if (buf.byteLength < b - a) throw new Error('short');
+      NT.fails = 0; return buf.byteLength > b - a ? buf.slice(0, b - a) : buf;
+    } catch (e) {
+      NT.fails++; NT.failAt = Date.now();
+      /* the server cannot be reached: the live NAIP layer is asked for what is missing (at most once a minute) */
+      if (NT.fails >= 3 && Date.now() - NT.redrawAt > 60000) { NT.redrawAt = Date.now(); try { window._naip && window._naip.redraw(); } catch (x) {} }
+      throw e;
+    } finally { clearTimeout(tm); }
+  }
+  function rangeBlob(name, size) {   // what openPack needs (slice → arrayBuffer) over the copied part of the file
+    return { size: size, slice: function (a, b) { return { arrayBuffer: function () {
+      return localRead(name, a, b).then(function (x) { if (!x || x.byteLength < b - a) throw new Error('not copied yet'); return x; }); } }; } };
+  }
+  var _ptBusy = {};
+  async function tryPartial(bucket, K) {   // the open county with no complete copy: draw the part that is copied
+    var name = bucket + K.file;
+    if (!OP.ok || !bucket || _bucket !== bucket || K.pk || _ptBusy[name]) return;
+    _ptBusy[name] = true;
+    try {
+      var m = await opMeta(name); if (!m || m.done || !m.total) return;
+      var st = OP.st[name], have = (st && st.copied) || 0;
+      if (!have && !(st && st.copying)) { try { have = (await (await (await opDir()).getFileHandle(name)).getFile()).size; } catch (e) { return; } }
+      if (have < 131072) return;
+      var pk = await openPack(rangeBlob(name, m.total));   /* header + directories must be copied already, else it waits */
+      if (_bucket !== bucket || K.pk) return;
+      pk.partial = true; pk.name = name; pk.sig = m.sig; pk.have = have;
+      pk.upto = function () { var s = OP.st[name]; return Math.max((s && s.copied) || 0, pk.have); };
+      K.pk = pk; ensureLayer();
+      if (K === P.imagery && window._naip) window._naip.redraw();
+      if (K === P.streets && window.baseLayers && window.baseLayers.topo) window.baseLayers.topo.redraw();
+      refreshStatus();
+    } catch (e) {} finally { delete _ptBusy[name]; }
+  }
+  function partialTick() { if (_bucket) [P.streets, P.imagery].forEach(function (K) { if (!K.pk) tryPartial(_bucket, K); }); }
+  if (OP.ok) setInterval(partialTick, 15000);
   var _wait = {};
   function worker() {
     if (OP.w) return OP.w;
     OP.w = new Worker(URL.createObjectURL(new Blob([WSRC], { type: 'application/javascript' })));
-    OP.w.onmessage = function (e) { var d = e.data || {}, st = OP.st[d.name]; if (st) st.copied = d.pos;
+    OP.w.onmessage = function (e) { var d = e.data || {};
+      if (d.rid) { var rr = RD[d.rid]; if (rr) { delete RD[d.rid]; rr(d); } return; }
+      var st = OP.st[d.name]; if (st) st.copied = d.pos;
       if (d.piece && d.piece.ms > 0) { SIG.kbs = Math.round(d.piece.bytes / d.piece.ms); if (st) st.kbs = SIG.kbs;
         if (d.piece.bytes >= 262144 && SIG.kbs < 50) SIG.slowUntil = Date.now() + 3 * 60000; }
       if (d.end && _wait[d.name]) { var r = _wait[d.name]; delete _wait[d.name]; r(d); } };
-    OP.w.onerror = function (e) { Object.keys(_wait).forEach(function (k) { var r = _wait[k]; delete _wait[k]; r({ end: true, err: 'worker: ' + ((e && e.message) || 'error') }); }); OP.w = null; };
+    OP.w.onerror = function (e) { Object.keys(RD).forEach(function (k) { var r = RD[k]; delete RD[k]; r({ miss: 1 }); });
+      Object.keys(_wait).forEach(function (k) { var r = _wait[k]; delete _wait[k]; r({ end: true, err: 'worker: ' + ((e && e.message) || 'error') }); }); OP.w = null; };
     return OP.w;
   }
   // WHEN: only while the map is idle. Moving, a parcel open on the camera, a SHIP running, or the camera's photos
@@ -450,7 +552,11 @@
     var t = (s.today || []).map(function (c) { return c.bucket; }), i = t.indexOf(cur);
     if (i >= 0 && t[i + 1]) return t[i + 1]; if (i < 0 && t.length && t[0] !== cur) return t[0];
     return ((s.tomorrow || [])[0] || {}).bucket || ''; } catch (e) { return ''; } }
-  function wanted() { var out = []; if (_bucket) out.push(_bucket); var n = _bucket ? nextOf(_bucket) : ''; if (n && n !== _bucket) out.push(n); return out; }
+  /* desk-p60 (11/1, MT: Lucas Tue, Cuyahoga Wed = 9.6 GB): also every county of the NEXT 3 DRIVING DAYS (driverDay's
+     'ahead', drive order), so a county's aerials are in Chrome before its morning (hotel wifi, overnight) */
+  function aheadOf() { try { var s = window._todaySched && window._todaySched(); return ((s && s.ahead) || []).map(function (c) { return c && c.bucket; }).filter(Boolean); } catch (e) { return []; } }
+  function wanted() { var out = []; if (_bucket) out.push(_bucket); var n = _bucket ? nextOf(_bucket) : ''; if (n && n !== _bucket) out.push(n);
+    aheadOf().forEach(function (b) { if (out.indexOf(b) < 0) out.push(b); }); return out; }
   async function freeBytes() {
     if (OP.testFree != null) return OP.testFree;
     try { var e = await navigator.storage.estimate(); OP.est = { quota: e.quota, usage: e.usage }; return Math.max(0, (e.quota || 0) - (e.usage || 0)); } catch (x) { return 0; }
@@ -484,6 +590,8 @@
     st.freeGB = Math.round(free / 1e8) / 10;
     if (free < need + RESERVE) { st.wait = 'low disk'; OP.lowAt = Date.now(); return false; }
     if (OP.persist == null && navigator.storage.persist) { try { OP.persist = await navigator.storage.persist(); } catch (e) { OP.persist = false; } }
+    if (fresh && K.pk && K.pk.partial && K.pk.name === name) { K.pk = null; ensureLayer(); }
+    if (fresh) SNAP[name] = null;
     if (fresh) {
       // a newer folder file: the old copy stops being drawn first (the folder file is read in place meanwhile)
       if (K.pk && K.pk.opfs && _bucket === bucket) { K.pk = null; ensureLayer(); try { await readInPlace(K, bucket, src); } catch (e) {} }
@@ -534,19 +642,42 @@
       return false;
     }
   }
-  // REMOVE what is no longer needed: a county off today's AND tomorrow's schedule (and not open on the map).
+  // REMOVE what is no longer needed (desk-p60, Dustin: nothing old hangs on). Kept: the county on the map, today's counties
+  // still ahead of it, tomorrow's, and the next 3 driving days'. Everything else in Chrome's pack folder goes (a county
+  // driven earlier today too, and any leftover file of any name), with its notes and any older whole-file copy.
   // With no schedule on this laptop nothing is removed.
-  async function cleanup() {
+  function keepSet() {
     var s = null; try { s = window._todaySched && window._todaySched(); } catch (e) {}
-    if (!s) return;
+    if (!s) return null;
     var keep = {}; wanted().forEach(function (b) { keep[b] = 1; });
-    (s.today || []).concat(s.tomorrow || []).forEach(function (c) { if (c && c.bucket) keep[c.bucket] = 1; });
-    try { var dir = await opDir();
-      for await (var ent of dir.keys()) {
-        var b = String(ent).replace(/\.(imagery|streets)\.pmtiles$/, ''); if (keep[b] || b === ent) continue;
-        if (OP.st[ent] && OP.st[ent].copying) continue;
-        try { await dir.removeEntry(ent); await DB.del('kv', 'opfs:' + ent); delete OP.st[ent]; } catch (e) {}
-      } } catch (e) {}
+    var t = (s.today || []).map(function (c) { return c && c.bucket; }), i = t.indexOf(_bucket);
+    t.forEach(function (b, k) { if (b && (i < 0 || k >= i)) keep[b] = 1; });
+    (s.tomorrow || []).forEach(function (c) { if (c && c.bucket) keep[c.bucket] = 1; });
+    return keep;
+  }
+  var _gone = [];
+  async function cleanup() {
+    var keep = keepSet(); if (!keep) return;
+    var bOf = function (n) { var m = /^([A-Z]{2}_[A-Z0-9_]+)\.(imagery|streets)\.pmtiles/.exec(String(n)); return m ? m[1] : ''; };
+    try { var dir = await opDir(), drop = [];
+      for await (var ent of dir.keys()) { var b = bOf(ent); if (b && keep[b]) continue; if (OP.st[ent] && OP.st[ent].copying) continue; drop.push(ent); }
+      for (var i = 0; i < drop.length; i++) {
+        try { await dir.removeEntry(drop[i], { recursive: true }); _gone.push(drop[i]); } catch (e) {}
+        try { await DB.del('kv', 'opfs:' + drop[i]); } catch (e) {} delete OP.st[drop[i]]; delete SNAP[drop[i]];
+      }
+      if (_gone.length > 12) _gone = _gone.slice(-12);
+    } catch (e) {}
+    /* notes and older whole-file copies (IndexedDB) of counties no longer kept */
+    try { var ks = await DB.keys('kv');
+      for (var j = 0; j < ks.length; j++) { var k = String(ks[j]), mm = /^(opfs:|imagery:|streets:)([A-Z]{2}_[A-Z0-9_]+)/.exec(k);
+        if (mm && !keep[mm[2]]) { try { await DB.del('kv', k); } catch (e) {} } }
+    } catch (e) {}
+  }
+  async function packFiles() {   // what Chrome holds, for the office: { '<file>': GB }
+    var o = {}; try { var dir = await opDir();
+      for await (var ent of dir.keys()) { try { var f = await (await dir.getFileHandle(ent)).getFile(); o[String(ent).replace(/\./g, '_')] = Math.round(f.size / 1e7) / 100; } catch (e) { o[String(ent).replace(/\./g, '_')] = -1; } }
+    } catch (e) {}
+    return o;
   }
   // desk-p54: is the copy already in Chrome still the one to keep? Same file = yes. A copy made by the other route (folder
   // vs server) of the same size = yes (not copied twice). The county ON THE MAP is never torn down for a server file:
@@ -594,6 +725,7 @@
         if (!ok) break;   // paused, low disk or an error: try again on the next tick
       }
     } catch (e) { console.warn('chrome copy', e); }
+    try { OP.files = await packFiles(); await freeBytes(); } catch (e) {}   /* desk-p60: what Chrome holds, after the clean-up */
     OP.busy = false; refreshStatus();
   }
   function copySoon() { if (!OP.ok) return; clearTimeout(OP.kick); OP.kick = setTimeout(copyTick, 3000); }
@@ -602,7 +734,8 @@
   function opLine(name) {   // short, for the office: 'chrome ✓ 5.16G 1.2ms (folder 40ms)' / 'chrome 1.20/5.16G waits for idle'
     var s = OP.st[name]; if (!OP.ok) return null; if (!s) return 'chrome: not checked yet';
     if (s.done) return 'chrome ✓ ' + gb(s.total) + (s.ms != null ? ' ' + s.ms + 'ms' : '') + (s.msFolder != null ? ' (folder ' + s.msFolder + 'ms)' : '') + (s.secs ? ' ' + s.secs + 's' : '');
-    return 'chrome ' + gb(s.copied) + '/' + gb(s.total) + (s.copying ? ' copying' : '') + (s.wait ? ' ' + s.wait : '') + (s.wait === 'low disk' && s.freeGB != null ? ' ' + s.freeGB + 'G free' : '') + (s.err ? ' ' + String(s.err).slice(0, 50) : '');
+    var pd = (name === (_bucket || '') + P.imagery.file && P.imagery.pk && P.imagery.pk.partial) || (name === (_bucket || '') + P.streets.file && P.streets.pk && P.streets.pk.partial);
+    return 'chrome ' + gb(s.copied) + '/' + gb(s.total) + (s.copying ? ' copying' : '') + (pd ? ' (map draws the copied part)' : '') + (s.wait ? ' ' + s.wait : '') + (s.wait === 'low disk' && s.freeGB != null ? ' ' + s.freeGB + 'G free' : '') + (s.err ? ' ' + String(s.err).slice(0, 50) : '');
   }
   function storeLine() { if (!OP.ok) return 'chrome copy: not supported'; var e = OP.est || {};
     return 'persist ' + (OP.persist == null ? '?' : OP.persist ? 'yes' : 'no') + ' · used ' + gb(e.usage) + ' of ' + gb(e.quota) + (OP.tileErr ? ' · tile errors ' + OP.tileErr : ''); }
@@ -638,12 +771,14 @@
       /* a quiet note while Chrome's own copy is being made (desk-p53); nothing to do */
       var st = OP.st[(_bucket || '') + K.file], pc = st && st.total ? Math.floor(st.copied * 100 / st.total) : 0;
       return ' · read from the Dropbox folder' + (pc > 0 && pc < 100 ? ' · saving to this laptop ' + pc + '%' : ''); };
+    if (I.pk && I.pk.partial) I = { pk: null, saving: true };   /* desk-p60: a copy still under way says only how far it is (line below) */
+    if (S.pk && S.pk.partial) S = { pk: null, saving: true };
     var s = S.saving ? 'Streets map: saving for no signal…' : S.pk ? (S.pk.opfs ? 'Streets map saved on this laptop ✓ (whole county)' : 'Streets map saved for no signal ✓ (whole county' + where(S) + ')') : 'no streets map file';
     var i = I.saving ? 'Imagery: saving for no signal…' : I.pk ? (I.pk.opfs ? 'Aerials saved on this laptop ✓ (capture ' + esc(captureText(I.pk.meta || {})) + ')' : 'Imagery saved for no signal ✓ (capture ' + esc(captureText(I.pk.meta || {})) + where(I) + ')') : 'no imagery file';
     var out = s + '<br>' + i;
     /* desk-p59: no folder link, ever (Dustin: never ask a driver to act). A pack not yet in Chrome is copied from the server
        by itself; this line only says how far that is */
-    var pi = OP.st[(_bucket || '') + I.file]; if (!(I.pk && I.pk.opfs) && pi && pi.total && !pi.done) out += '<br>Aerials: saving to this laptop ' + Math.floor((pi.copied || 0) * 100 / pi.total) + '%';
+    var pi = OP.st[(_bucket || '') + P.imagery.file]; if (!(P.imagery.pk && P.imagery.pk.opfs) && pi && pi.total && !pi.done) out += '<br>Aerials: saving to this laptop ' + Math.floor((pi.copied || 0) * 100 / pi.total) + '%';
     return out;
   }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -673,9 +808,9 @@
   function reportPacks() {
     try {
       var I = P.imagery, S = P.streets, o = { build: window.DESK_BUILD || '', bucket: _bucket || '',
-        imagery: { open: !!I.pk, inPlace: !!(I.pk && I.pk.inPlace), opfs: !!(I.pk && I.pk.opfs), needsFolder: !!I.needsFolder, minZ: I.pk ? I.pk.minZ : null, maxZ: I.pk ? I.pk.maxZ : null, type: I.pk ? I.pk.tileType : null },
+        imagery: { open: !!I.pk, inPlace: !!(I.pk && I.pk.inPlace), opfs: !!(I.pk && I.pk.opfs), partial: !!(I.pk && I.pk.partial), tiles: PT, needsFolder: !!I.needsFolder, minZ: I.pk ? I.pk.minZ : null, maxZ: I.pk ? I.pk.maxZ : null, type: I.pk ? I.pk.tileType : null },
         streets: { open: !!S.pk, inPlace: !!(S.pk && S.pk.inPlace), opfs: !!(S.pk && S.pk.opfs), needsFolder: !!S.needsFolder, saving: !!S.saving },
-        chrome: OP.ok ? { store: storeLine(), packs: (function () { var o = {}; Object.keys(OP.st).forEach(function (n) { var x = OP.st[n];
+        chrome: OP.ok ? { store: storeLine(), files: OP.files || null, gone: _gone.slice(-6), wanted: wanted(), packs: (function () { var o = {}; Object.keys(OP.st).forEach(function (n) { var x = OP.st[n];
           o[n.replace(/\./g, '_')] = { copied: x.copied || 0, total: x.total || 0, done: !!x.done, ms: x.ms == null ? null : x.ms, msFolder: x.msFolder == null ? null : x.msFolder,
             secs: x.secs || 0, wait: x.wait || '', err: x.err || '', via: x.via || '' }; }); return o; })() } : { store: storeLine() },
         speed: window.SpeedLim ? { loaded: window.SpeedLim.loaded(), segs: window.SpeedLim.count() } : null };
@@ -711,6 +846,7 @@
     opfsLine: function (B, kind) { var K = P[kind]; return K ? opLine(B + K.file) : null; },
     storeLine: storeLine, opfs: function () { return { ok: OP.ok, st: OP.st, persist: OP.persist, est: OP.est, tileErr: OP.tileErr }; },
     copyNow: function () { return copyTick(); },
+    wanted: function () { return wanted(); }, _zxy: zxyId, partialNow: function () { partialTick(); }, tileStats: function () { return PT; },
     // TEST ONLY: a File stands in for the folder file; a free-space figure stands in for the disk's
     _testSource: function (kind, bucket, file) { _testSrc[bucket + P[kind].file] = file; },
     _testFree: function (n) { OP.testFree = n; },

@@ -943,7 +943,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p59';
+var DESK_BUILD = 'desk-p60';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -4540,7 +4540,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
         if ((await saved(list[i].bucket)).sheet) pick = list[i].bucket;
       }
       if (!pick) return false;   // nothing loadable yet: tried again in a minute, on signal, and on wake
-      if (_sched.date && _sched.date < today) _sched = { date: today, today: list, tomorrow: [] };
+      if (_sched.date && _sched.date < today) _sched = { date: today, today: list, tomorrow: [], ahead: (_sched.ahead || []).filter(function(c){ return !c.date || c.date > today; }) };
       var ok = await switchTo(pick, 'morning');
       if (ok) _mornDone = today;
       preload();
@@ -4650,6 +4650,8 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     Object.keys(R.by).forEach(function(b){ o[b] = R.by[b];
       /* desk-p52: the Chrome copy moves between the 10-min checks: its lines are read fresh for every 30-s report */
       if (op) { o[b] = Object.assign({}, R.by[b]); ['imagery', 'streets'].forEach(function(k){ var v = DeskImagery.opfsLine(b, k) || 'chrome: not checked yet'; o[b][k] = /^chrome ✓/.test(v) ? 'yes · ' + v : v; }); } });
+    /* desk-p60: every county the laptop copies ahead (next 3 driving days): its aerials + streets lines */
+    if (op && DeskImagery.wanted) DeskImagery.wanted().forEach(function(b){ if (o[b]) return; o[b] = {}; ['imagery', 'streets'].forEach(function(k){ var v = DeskImagery.opfsLine(b, k) || 'chrome: not checked yet'; o[b][k] = /^chrome ✓/.test(v) ? 'yes · ' + v : v; }); });
     o.next = R.next; o.at = new Date(R.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     /* desk-p52: Chrome's storage (persisted? used of allowed) rides along */
     try { if (window.DeskImagery && DeskImagery.storeLine) o.chrome = String(DeskImagery.storeLine()).slice(0, 90); } catch (e) {}
