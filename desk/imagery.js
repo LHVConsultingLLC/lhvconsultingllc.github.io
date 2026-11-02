@@ -824,7 +824,7 @@
           o[n.replace(/\./g, '_')] = { copied: x.copied || 0, total: x.total || 0, done: !!x.done, ms: x.ms == null ? null : x.ms, msFolder: x.msFolder == null ? null : x.msFolder,
             secs: x.secs || 0, wait: x.wait || '', err: x.err || '', via: x.via || '' }; }); return o; })() } : { store: storeLine() },
         speed: window.SpeedLim ? { loaded: window.SpeedLim.loaded(), segs: window.SpeedLim.count() } : null,
-        aerial: { made: PA.made, check: PA.check } };
+        aerial: { made: PA.made, check: PA.check, checks: PA.checks } };
       var sig = JSON.stringify(o); if (sig === _repSig && Date.now() - _repAt < 300000) return;
       if (Date.now() - _repAt < 20000 && sig !== _repSig && _repSig) return;   /* a copy in progress: at most every 20 s */
       if (!(window.link && window.link.connected)) return;   // not sent = not remembered: the next tick retries (10/19)
@@ -878,7 +878,9 @@
     return fetch(u, { signal: ac ? ac.signal : undefined }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
       .then(toImg).catch(function () { return null; }).finally(function () { clearTimeout(tm); });
   }
-  async function parcelAerial(o) {   // o = { lat, lng, rings?: [[[lat, lng], ...]], bb?: [minLat, minLng, maxLat, maxLng] }
+  async function parcelAerial(o, src) {   // o = { lat, lng, rings?: [[[lat, lng], ...]], bb?: [minLat, minLng, maxLat, maxLng] }
+    /* src (desk-p64, the self-test only): filled with where the picture came from { pack: tiles from the pack, miss, live } */
+    src = src || {};
     if (!o || !isFinite(o.lat) || !isFinite(o.lng)) return null;
     var pk = P.imagery.pk, maxZ = pk ? Math.min(pk.maxZ, 19) : 18, minZ = pk ? pk.minZ : 17;
     var bb = o.bb || [o.lat, o.lng, o.lat, o.lng], cLat = (bb[0] + bb[2]) / 2, cLng = (bb[1] + bb[3]) / 2;
@@ -891,15 +893,21 @@
     var cv = document.createElement('canvas'); cv.width = cv.height = S;
     var g = cv.getContext('2d'); g.fillStyle = '#0c1220'; g.fillRect(0, 0, S, S);
     var jobs = [], miss = 0, got = 0;
+    /* desk-p64: the square under the parcel's pin = the CORE of the self-test (the pack is built around the pins; a big
+       outline may reach past it, which is not a fault) */
+    var cx0 = Math.floor(lonX(o.lng, z) / 256), cx1 = cx0, cy0 = Math.floor(latY(o.lat, z) / 256), cy1 = cy0;
+    src.core = (cx1 - cx0 + 1) * (cy1 - cy0 + 1); src.coreGot = 0;
     if (pk && z >= pk.minZ) {
       for (var tx = Math.floor(x0 / 256); tx <= Math.floor((x0 + S - 1) / 256); tx++) for (var ty = Math.floor(y0 / 256); ty <= Math.floor((y0 + S - 1) / 256); ty++) {
         var r = pk.idx.get(zxyId(z, tx, ty)); if (!r) { miss++; continue; }
         jobs.push((function (tx, ty, r) { return tileBytes(pk, r).then(function (b) { if (!b) { miss++; return null; }
-          return toImg(new Blob([b], { type: pk.mime || 'image/jpeg' })).then(function (im) { got++; return { im: im, x: tx * 256 - x0, y: ty * 256 - y0 }; }, function () { miss++; return null; }); }); })(tx, ty, r));
+          return toImg(new Blob([b], { type: pk.mime || 'image/jpeg' })).then(function (im) { got++; if (tx >= cx0 && tx <= cx1 && ty >= cy0 && ty <= cy1) src.coreGot++;
+            return { im: im, x: tx * 256 - x0, y: ty * 256 - y0 }; }, function () { miss++; return null; }); }); })(tx, ty, r));
       }
     } else miss = 1;
     var tiles = await Promise.all(jobs);
-    if (miss) { var live = await liveSquare(x0, y0, S, S, z); if (live) { g.drawImage(live, 0, 0, S, S); got++; } }
+    src.pack = tiles.filter(function (t) { return !!t; }).length; src.miss = miss; src.live = false;
+    if (miss) { var live = await liveSquare(x0, y0, S, S, z); if (live) { g.drawImage(live, 0, 0, S, S); got++; src.live = true; } }
     if (!got) return null;
     tiles.forEach(function (t) { if (t) g.drawImage(t.im, t.x, t.y, 256, 256); });
     /* the outline: a dark halo, then yellow, exactly as on the map */
@@ -912,32 +920,93 @@
     });
     if (!rings.length) { var px = lonX(o.lng, z) - x0, py = latY(o.lat, z) - y0;
       g.beginPath(); g.arc(px, py, 9, 0, 2 * Math.PI); g.lineWidth = 4; g.strokeStyle = '#000'; g.stroke(); g.lineWidth = 2.5; g.strokeStyle = '#FFD400'; g.stroke(); }
-    PA.made++;
+    if (!src.noCount) PA.made++;
     return await new Promise(function (res) { try { cv.toBlob(function (b) { res(b); }, 'image/jpeg', 0.9); } catch (e) { res(null); } });
   }
-  var PA = { made: 0, check: null };
+  var PA = { made: 0, check: null, checks: {} };
   /* desk-p63: the office sees that the parcel aerials work on this laptop without anyone opening one: once the county's
      pack is open, one parcel's aerial (the selected one, else the first) is made in the background and reported with
-     the pack report (deskPacks.aerial). Nothing on screen. */
-  var _paChecked = {};
-  setInterval(function () {
+     the pack report (deskPacks.aerial). Nothing on screen.
+     desk-p64 (11/1 night, the promise to MT: "nobody calls a county ready until the laptop draws a test aerial on its own
+     and reports back that the check passed"): the check passes ONLY when every square of the picture came from the
+     laptop's own pack (no live picture filled in, nothing missing, not a partly copied pack), so a laptop with signal can
+     never pass on the internet's picture. It runs again when the open pack changes (the copy finished) and every 6 h.
+     The counties copied ahead (tomorrow, the next driving days) are checked too, as soon as their copy is complete: one
+     aerial square read from Chrome's copy and drawn (header + one directory page only, never the whole index). Each
+     result carries the build that made it: the server counts only a fresh pass from the build running now. */
+  var RECHECK = 6 * 3600e3, _paChecked = {}, _paBusy = false;
+  function oneCheck(b, r) { PA.check = r; PA.checks[b] = r; var k = Object.keys(PA.checks); if (k.length > 6) delete PA.checks[k[0]]; refreshStatus(); setTimeout(refreshStatus, 25000); }
+  async function parcelCheck(b, pk) {
+    var st = window.state; if (!st || !st.seqs || !st.seqs.length) return false;
+    var r = (st.currentSeq && window._rowFor && window._rowFor(st.currentSeq)) || st.seqs[0];
+    var la = parseFloat(r.lat), lo = parseFloat(r.lng); if (!isFinite(la) || !isFinite(lo)) return false;
+    _paChecked[b] = { at: Date.now(), pk: pk }; var t0 = Date.now(), bd = null; try { bd = window.boundsFor ? window.boundsFor(r.seq) : null; } catch (e) {}
+    var src = { noCount: true }, bl = null, err = '';
+    try { bl = await parcelAerial({ lat: la, lng: lo, rings: bd ? bd.rings : null, bb: bd ? bd.bb : null }, src); } catch (e) { err = String(e && e.message || e).slice(0, 80); }
+    /* PASS = the square under the parcel came from the laptop's own complete pack (the margin around it may be filled
+       live; that never makes a pass) */
+    var ok = !!bl && src.core > 0 && src.coreGot === src.core && !pk.partial;
+    oneCheck(b, { bucket: b, kind: 'parcel', seq: String(r.seq), ok: ok, kb: bl ? Math.round(bl.size / 1024) : 0, ms: Date.now() - t0, opfs: !!pk.opfs, partial: !!pk.partial,
+      tiles: src.pack || 0, miss: src.miss || 0, live: !!src.live, core: src.core || 0, coreGot: src.coreGot || 0, build: window.DESK_BUILD || '', at: Date.now(),
+      err: err || (ok ? '' : !bl ? 'no picture' : pk.partial ? 'pack not completely copied' : 'the parcel\'s square is not in the pack') });
+    return true;
+  }
+  function tileZ(id) { var z = 0; while (z < 30 && (pow2(2 * (z + 1)) - 1) / 3 <= id) z++; return z; }
+  async function tileCheck(b) {   /* a county copied ahead: one aerial square from Chrome's copy, decoded and drawn */
+    var name = b + P.imagery.file, m = await opMeta(name), f = await opDone(name); if (!f) return false;
+    _paChecked[b] = { at: Date.now(), sig: m ? String(m.sig || m.total) + '/' + String(m.at || '') : '' };
+    var t0 = Date.now(), out = { bucket: b, kind: 'tile', ok: false, kb: 0, opfs: true, build: window.DESK_BUILD || '' };
     try {
-      var b = _bucket, pk = P.imagery.pk; if (!b || !pk || _paChecked[b]) return;
-      var st = window.state; if (!st || !st.seqs || !st.seqs.length) return;
-      var r = (st.currentSeq && window._rowFor && window._rowFor(st.currentSeq)) || st.seqs[0];
-      var la = parseFloat(r.lat), lo = parseFloat(r.lng); if (!isFinite(la) || !isFinite(lo)) return;
-      _paChecked[b] = 1; var t0 = Date.now(), bd = null; try { bd = window.boundsFor ? window.boundsFor(r.seq) : null; } catch (e) {}
-      var made0 = PA.made;
-      parcelAerial({ lat: la, lng: lo, rings: bd ? bd.rings : null, bb: bd ? bd.bb : null }).then(function (bl) {
-        PA.made = made0;   /* the check itself is not counted as a driver opening one */
-        PA.check = { bucket: b, seq: String(r.seq), ok: !!bl, kb: bl ? Math.round(bl.size / 1024) : 0, ms: Date.now() - t0, opfs: !!pk.opfs, at: Date.now() };
-        refreshStatus(); setTimeout(refreshStatus, 25000);   /* the report holds back within 20 s of the last one */
-      }, function (e) { PA.check = { bucket: b, seq: String(r.seq), ok: false, err: String(e && e.message || e).slice(0, 80), at: Date.now() }; refreshStatus(); });
-    } catch (e) {}
+      var H = new DataView(await f.slice(0, 127).arrayBuffer());
+      if (String.fromCharCode.apply(null, new Uint8Array(H.buffer, 0, 7)) !== 'PMTiles' || H.getUint8(7) !== 3) throw new Error('not a PMTiles v3 file');
+      var u64 = function (o) { return H.getUint32(o, true) + H.getUint32(o + 4, true) * 4294967296; };
+      var rdo = u64(8), rdl = u64(16), ldo = u64(40), tdo = u64(56), gz = H.getUint8(97) === 2;
+      var rd = function (o, l) { return f.slice(o, o + l).arrayBuffer().then(function (x) { return gz ? gunzip(x) : x; }); };
+      var TT = { 2: 'image/png', 3: 'image/jpeg', 4: 'image/webp', 5: 'image/avif' }, mime = TT[H.getUint8(99)] || 'image/jpeg', maxZ = H.getUint8(101);
+      var ents = parseDir(await rd(rdo, rdl)), e = null;
+      for (var depth = 0; depth < 4; depth++) {
+        var tilesHere = ents.filter(function (x) { return x[1] > 0 && tileZ(x[0]) === maxZ; });
+        if (!tilesHere.length) tilesHere = ents.filter(function (x) { return x[1] > 0; });
+        if (tilesHere.length) { e = tilesHere[Math.floor(tilesHere.length / 2)]; break; }
+        var leaves = ents.filter(function (x) { return x[1] === 0; }); if (!leaves.length) break;
+        var lf = leaves[Math.floor(leaves.length / 2)]; ents = parseDir(await rd(ldo + lf[3], lf[2]));
+      }
+      if (!e) throw new Error('no aerial square in the pack');
+      var bytes = await f.slice(tdo + e[3], tdo + e[3] + e[2]).arrayBuffer();
+      var im = await toImg(new Blob([bytes], { type: mime }));
+      var cv = document.createElement('canvas'); cv.width = cv.height = 256; var g = cv.getContext('2d'); g.drawImage(im, 0, 0, 256, 256);
+      var px = g.getImageData(0, 0, 256, 256).data, lo = 255, hi = 0;
+      for (var i = 0; i < px.length; i += 4 * 97) { var v = (px[i] + px[i + 1] + px[i + 2]) / 3; if (v < lo) lo = v; if (v > hi) hi = v; }
+      var bl = await new Promise(function (res) { try { cv.toBlob(function (x) { res(x); }, 'image/jpeg', 0.9); } catch (er) { res(null); } });
+      out.z = tileZ(e[0]); out.kb = bl ? Math.round(bl.size / 1024) : 0; out.ok = !!bl && hi - lo > 8;
+      if (!out.ok) out.err = 'the square drew blank';
+    } catch (er) { out.err = String(er && er.message || er).slice(0, 80); }
+    out.ms = Date.now() - t0; out.at = Date.now();
+    PA.checks[b] = out; var k = Object.keys(PA.checks); if (k.length > 6) delete PA.checks[k[0]]; refreshStatus(); setTimeout(refreshStatus, 25000);
+    return true;
+  }
+  setInterval(async function () {
+    if (_paBusy) return; _paBusy = true;
+    try {
+      var b = _bucket, pk = P.imagery.pk, c = b && _paChecked[b];
+      if (b && pk && !(c && c.pk === pk && Date.now() - c.at < RECHECK)) { if (await parcelCheck(b, pk)) return; }
+      if (!OP.ok) return;
+      var ws = wanted();
+      for (var i = 0; i < ws.length; i++) { var a = ws[i]; if (!a || a === _bucket) continue;
+        var s = OP.st[a + P.imagery.file]; if (!s || !s.done) continue;
+        var m = await opMeta(a + P.imagery.file), sig = m ? String(m.sig || m.total) + '/' + String(m.at || '') : '', ca = _paChecked[a];
+        if (ca && ca.sig === sig && Date.now() - ca.at < RECHECK) continue;
+        if (await tileCheck(a)) return; }
+    } catch (e) {} finally { _paBusy = false; }
   }, 15000);
+  /* the 30-s screen report carries the checks too (the second office path: a laptop whose live writes stall still reports) */
+  function aerialReport() { var o = {}; Object.keys(PA.checks).slice(-4).forEach(function (b) { var c = PA.checks[b];
+    o[b] = { ok: !!c.ok, at: c.at, k: c.kind === 'tile' ? 't' : 'p', kb: c.kb || 0, b: c.build || '', e: String(c.err || '').slice(0, 40) }; }); return o; }
   window.DeskImagery = {
     parcelAerial: function (o) { return parcelAerial(o).catch(function (e) { console.warn('parcel aerial', e); return null; }); },
-    aerialStats: function () { return PA; },
+    aerialStats: function () { return PA; }, aerialReport: aerialReport,
+    /* TEST ONLY (harness): forget the self-tests so the next tick runs them again; run one ahead county's tile test now */
+    _recheck: function () { _paChecked = {}; }, _tileCheck: function (b) { return tileCheck(b).then(function () { return PA.checks[b] || null; }); },
     pack: function () { return P.imagery.pk; }, streets: function () { return P.streets.pk; },
     has: function (z, x, y) { return has(P.imagery, z, x, y); }, reload: function () { if (_bucket) loadCounty(_bucket); },
     reloadStreets: function () { if (_bucket) loadPack(_bucket, P.streets); },

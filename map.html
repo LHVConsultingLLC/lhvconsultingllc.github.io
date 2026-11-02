@@ -972,7 +972,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p63';
+var DESK_BUILD = 'desk-p64';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -4934,7 +4934,9 @@ window.__micDiag = async function(){
       /* desk-p53: the camera line (which path brought the camera's seq, how long after the lock, stream + fetch health) */
       cam: window.__camLineReport ? window.__camLineReport() : null,
       /* desk-p54: the offline banner (seconds showing now, episodes today, last one's length) */
-      net: window.__netReport ? window.__netReport() : null };
+      net: window.__netReport ? window.__netReport() : null,
+      /* desk-p64: the aerial self-tests (one parcel aerial of the open county, one square of each county copied ahead), per county */
+      aer: (window.DeskImagery && DeskImagery.aerialReport) ? DeskImagery.aerialReport() : null };
   } catch (e) { return { err: String(e.message || e).slice(0, 120) }; } }
   window.__deskScreen = function(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} return sc; };
   function tick(){ var sc = screen(); try { if (JSON.stringify(sc).length > 2900) { sc.offlineReady = null; sc.ask = null; } } catch (e) {} if (!sentMap && sc.view === 'map') { sentMap = true; window.__deskPing && __deskPing('map', { screen: sc }); } else window.__deskPing && __deskPing('screen', { screen: sc }); }
