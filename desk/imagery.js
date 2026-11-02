@@ -235,6 +235,9 @@
   }
   async function sourceFile(bucket, K) {   // → { size, mod, get() → Blob, handle? } or null
     var name = bucket + K.file;
+    /* THE LEDGERSTONE APP (11/1, desk/native.js): the iPad downloaded the pack itself; read it from the app's own storage.
+       window.LSNative only exists inside the app, so the laptops never take this path. */
+    if (window.LSNative && window.LSNative.packs) { try { var ns = await window.LSNative.packs.source(bucket, K === P.imagery ? 'imagery' : 'streets'); if (ns) return ns; } catch (e) {} }
     if (_testSrc[name]) { var tf = _testSrc[name];   /* harness only: a File stands in for the folder file */
       return { size: tf.size, mod: String(tf.lastModified), handle: { test: 1 }, file: tf, get: function () { return Promise.resolve(tf); } }; }
     if (window.__DESK_MOCK) {
@@ -348,7 +351,7 @@
   var _testSrc = {};
   /* desk-p52 fix: createSyncAccessHandle exists only INSIDE a worker (Chrome never shows it on the page's own
      FileSystemFileHandle), so testing for it here turned the copy off everywhere. The worker reports if it is missing. */
-  var OP = { ok: !!(navigator.storage && navigator.storage.getDirectory && window.Worker && window.FileSystemFileHandle) && !window.LOOK,
+  var OP = { ok: !!(navigator.storage && navigator.storage.getDirectory && window.Worker && window.FileSystemFileHandle) && !window.LOOK && !(window.LSNative && window.LSNative.packs),   /* the app keeps packs natively: no second copy */
     st: {}, busy: false, w: null, persist: null, est: null, tileErr: 0, lowAt: 0, kick: 0, testFree: null };
   /* desk-p59: a browser that shows Chrome's storage but refuses it (WebKit private windows: UnknownError) keeps live imagery */
   if (OP.ok) { try { navigator.storage.getDirectory().catch(function () { OP.ok = false; }); } catch (e) { OP.ok = false; } }
@@ -649,12 +652,19 @@
   function keepSet() {
     var s = null; try { s = window._todaySched && window._todaySched(); } catch (e) {}
     if (!s) return null;
+    /* desk-p62 (11/1 10 PM, MT Clark): a schedule that does not say what the next driving days are (an answer saved
+       before desk-p60) is not enough to remove anything: nothing is removed until it does */
+    if (!Array.isArray(s.ahead)) return null;
     var keep = {}; wanted().forEach(function (b) { keep[b] = 1; });
-    var t = (s.today || []).map(function (c) { return c && c.bucket; }), i = t.indexOf(_bucket);
-    t.forEach(function (b, k) { if (b && (i < 0 || k >= i)) keep[b] = 1; });
-    (s.tomorrow || []).forEach(function (c) { if (c && c.bucket) keep[c.bucket] = 1; });
+    /* NEVER REMOVED: the county open on the map (the page's own job too), EVERY county of today (driven earlier today
+       or not), tomorrow's, and the next 3 driving days' */
+    if (_bucket) keep[_bucket] = 1;
+    try { var j = API.job(); if (j && j.bucket) keep[j.bucket] = 1; } catch (e) {}
+    (s.today || []).concat(s.tomorrow || [], s.ahead || []).forEach(function (c) { if (c && c.bucket) keep[c.bucket] = 1; });
     return keep;
   }
+  /* the harness replays the 11/1 case against this exact rule */
+  window.__deskKeepSet = function () { var k = keepSet(); return k ? Object.keys(k).sort() : null; };
   var _gone = [];
   async function cleanup() {
     var keep = keepSet(); if (!keep) return;
@@ -837,7 +847,77 @@
   }
   API.onRender(tick);
   tick();
+  // ── THE PARCEL'S AERIAL, MADE FROM THE COUNTY PACK (desk-p62, MT 11/1 10 PM Clark: "Where are the aerials?" ... "It's
+  // all of them") ── The Aerial button on the field card showed only per-parcel pictures copied from the Dropbox
+  // folder; a county opened from the server (every morning since desk-p43) never had one, so every parcel said "No
+  // aerial saved" while the county's pack sat complete in Chrome. The picture is now cut from that pack (no signal
+  // needed): the tiles around the parcel at the pack's sharpest zoom, the outline in yellow. Where the pack has no tile
+  // and there is signal, the live USDA NAIP picture of the same square fills in underneath. → Blob (image/jpeg) or null.
+  function lonX(lng, z) { return (lng + 180) / 360 * 256 * pow2(z); }
+  function latY(lat, z) { var s = Math.sin(lat * Math.PI / 180); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * pow2(z); }
+  function tileBytes(pk, r) {
+    if (!pk.partial) return pk.blob.slice(r[0], r[0] + r[1]).arrayBuffer();
+    var local = r[0] + r[1] <= pk.upto();
+    return (local ? localRead(pk.name, r[0], r[0] + r[1]) : Promise.resolve(null)).then(function (b) {
+      if (b && b.byteLength >= r[1]) return b;
+      if (!netOK(pk.name)) return null;
+      return netTile(pk.name, r[0], r[0] + r[1]).catch(function () { return null; });
+    });
+  }
+  function toImg(blob) {
+    if (window.createImageBitmap) return createImageBitmap(blob);
+    return new Promise(function (res, rej) { var u = URL.createObjectURL(blob), im = new Image();
+      im.onload = function () { res(im); setTimeout(function () { URL.revokeObjectURL(u); }, 0); }; im.onerror = function () { URL.revokeObjectURL(u); rej(new Error('img')); }; im.src = u; });
+  }
+  function liveSquare(x0, y0, w, h, z) {   /* the same square from the live NAIP service: signal only, 12 s at most */
+    var NU = window.NAIP_URL; if (!NU || navigator.onLine === false || sigNow() === 'no signal') return Promise.resolve(null);
+    var R = 20037508.342789244, W = 256 * pow2(z), mx = function (px) { return px / W * 2 * R - R; }, my = function (py) { return R - py / W * 2 * R; };
+    var u = NU + '?bbox=' + mx(x0).toFixed(2) + ',' + my(y0 + h).toFixed(2) + ',' + mx(x0 + w).toFixed(2) + ',' + my(y0).toFixed(2) + '&bboxSR=3857&imageSR=3857&size=' + w + ',' + h + '&format=jpg&f=image';
+    var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { try { if (ac) ac.abort(); } catch (e) {} }, 12000);
+    return fetch(u, { signal: ac ? ac.signal : undefined }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(toImg).catch(function () { return null; }).finally(function () { clearTimeout(tm); });
+  }
+  async function parcelAerial(o) {   // o = { lat, lng, rings?: [[[lat, lng], ...]], bb?: [minLat, minLng, maxLat, maxLng] }
+    if (!o || !isFinite(o.lat) || !isFinite(o.lng)) return null;
+    var pk = P.imagery.pk, maxZ = pk ? Math.min(pk.maxZ, 19) : 18, minZ = pk ? pk.minZ : 17;
+    var bb = o.bb || [o.lat, o.lng, o.lat, o.lng], cLat = (bb[0] + bb[2]) / 2, cLng = (bb[1] + bb[3]) / 2;
+    if (!isFinite(cLat) || !isFinite(cLng)) { cLat = o.lat; cLng = o.lng; }
+    /* the sharpest zoom at which the outline fits in a 1024-px square with room around it */
+    var z = maxZ; while (z > minZ && Math.max(lonX(bb[3], z) - lonX(bb[1], z), latY(bb[0], z) - latY(bb[2], z)) * 1.5 > 1024) z--;
+    var span = Math.max(lonX(bb[3], z) - lonX(bb[1], z), latY(bb[0], z) - latY(bb[2], z));
+    var S = Math.max(640, Math.min(1024, Math.ceil(span * 1.5 / 2) * 2));
+    var cx = lonX(cLng, z), cy = latY(cLat, z), x0 = Math.round(cx - S / 2), y0 = Math.round(cy - S / 2);
+    var cv = document.createElement('canvas'); cv.width = cv.height = S;
+    var g = cv.getContext('2d'); g.fillStyle = '#0c1220'; g.fillRect(0, 0, S, S);
+    var jobs = [], miss = 0, got = 0;
+    if (pk && z >= pk.minZ) {
+      for (var tx = Math.floor(x0 / 256); tx <= Math.floor((x0 + S - 1) / 256); tx++) for (var ty = Math.floor(y0 / 256); ty <= Math.floor((y0 + S - 1) / 256); ty++) {
+        var r = pk.idx.get(zxyId(z, tx, ty)); if (!r) { miss++; continue; }
+        jobs.push((function (tx, ty, r) { return tileBytes(pk, r).then(function (b) { if (!b) { miss++; return null; }
+          return toImg(new Blob([b], { type: pk.mime || 'image/jpeg' })).then(function (im) { got++; return { im: im, x: tx * 256 - x0, y: ty * 256 - y0 }; }, function () { miss++; return null; }); }); })(tx, ty, r));
+      }
+    } else miss = 1;
+    var tiles = await Promise.all(jobs);
+    if (miss) { var live = await liveSquare(x0, y0, S, S, z); if (live) { g.drawImage(live, 0, 0, S, S); got++; } }
+    if (!got) return null;
+    tiles.forEach(function (t) { if (t) g.drawImage(t.im, t.x, t.y, 256, 256); });
+    /* the outline: a dark halo, then yellow, exactly as on the map */
+    var rings = o.rings || [];
+    [['rgba(0,0,0,.5)', 7], ['#FFD400', 3.5]].forEach(function (st) {
+      g.strokeStyle = st[0]; g.lineWidth = st[1]; g.lineJoin = 'round';
+      rings.forEach(function (ring) { if (!ring || ring.length < 2) return; g.beginPath();
+        ring.forEach(function (c, i) { var px = lonX(c[1], z) - x0, py = latY(c[0], z) - y0; if (i) g.lineTo(px, py); else g.moveTo(px, py); });
+        g.closePath(); g.stroke(); });
+    });
+    if (!rings.length) { var px = lonX(o.lng, z) - x0, py = latY(o.lat, z) - y0;
+      g.beginPath(); g.arc(px, py, 9, 0, 2 * Math.PI); g.lineWidth = 4; g.strokeStyle = '#000'; g.stroke(); g.lineWidth = 2.5; g.strokeStyle = '#FFD400'; g.stroke(); }
+    PA.made++;
+    return await new Promise(function (res) { try { cv.toBlob(function (b) { res(b); }, 'image/jpeg', 0.9); } catch (e) { res(null); } });
+  }
+  var PA = { made: 0 };
   window.DeskImagery = {
+    parcelAerial: function (o) { return parcelAerial(o).catch(function (e) { console.warn('parcel aerial', e); return null; }); },
+    aerialStats: function () { return PA; },
     pack: function () { return P.imagery.pk; }, streets: function () { return P.streets.pk; },
     has: function (z, x, y) { return has(P.imagery, z, x, y); }, reload: function () { if (_bucket) loadCounty(_bucket); },
     reloadStreets: function () { if (_bucket) loadPack(_bucket, P.streets); },

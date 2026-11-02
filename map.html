@@ -972,7 +972,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p61';
+var DESK_BUILD = 'desk-p62';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -2283,13 +2283,19 @@ function renderDashboard(){
   var incomplete = _incAll.length - uploading - rating;
   var pending = listable().length - complete - incomplete;
   var _jb = String(state.job.bucket || '');
-  var driven = Object.values(state.logs).filter(function(l){ return !l || !l.bucket || String(l.bucket) === _jb; }).filter(function(l){ return seqStatus(l) === 'complete'; }).length;
+  /* desk-p62 (MT 11/1 10 PM Clark read "192 TO DRIVE · 0 DRIVEN · 73 TOTAL"): after the night's new drive file the parcels
+     driven today are no longer on it, so they fell out of DRIVEN, and TOTAL showed the driven count. DRIVEN = this county's
+     closes today wherever they are; TOTAL = the job: every parcel on the file + every one driven that has left it. */
+  var _inF = {}; (state.seqs || []).forEach(function(r){ if (r && r.seq) _inF[String(r.seq).trim()] = 1; });
+  var _bk = Object.keys(state.logs || {}).filter(function(k){ var l = state.logs[k]; return l && (!l.bucket || String(l.bucket) === _jb) && seqStatus(l) === 'complete'; });
+  var completeShown = Math.max(complete, _bk.filter(function(k){ return _isToday(state.logs[k]); }).length);
+  var jobTotal = (state.seqs || []).length + _bk.filter(function(k){ var l = state.logs[k]; return _inF[String(l.seq != null ? l.seq : k).trim()] !== 1; }).length;
   // NB (found 10/11): the phone computes pending = listable - complete - incomplete with incomplete ALREADY
   // net of uploading + rating, so its Pending tile also counts parcels that are uploading or rating.
   // The desk's "To drive" takes them out (they have been driven). See README "Differences from the phone".
   $('st-pending').textContent = Math.max(0, pending - uploading - rating);
   $('st-incomplete').textContent = incomplete; $('st-uploading').textContent = uploading; $('st-rating').textContent = rating;
-  $('st-complete').textContent = complete; $('st-total').textContent = driven;
+  $('st-complete').textContent = completeShown; $('st-total').textContent = jobTotal;
   $('county').textContent = state.job.county + ' County';
   (function(){ var dt = String(state.job.date || ''), m = /^\d{4}-(\d{2})-(\d{2})/.exec(dt);
     $('tb-job').innerHTML = esc(state.job.county) + '<small>' + esc(m ? (+m[1]) + '/' + (+m[2]) : dt) + '</small>';
@@ -3189,11 +3195,22 @@ function nextSeq(){
 // ── AERIALS: one full-height overlay, opened ONLY from the field card (button or A) ──
 // Nothing pops up on selection (Dustin 10/11). One source: IndexedDB, filled from the
 // laptop's own Dropbox folder, so the driver never digs through the aerials folder.
-var Aer = { cache: {}, order: [], open: false };
+var Aer = { cache: {}, order: [], open: false, retry: {} };
 function loadAerial(seq){
   var key = aerialKey(seq); if (!key) return Promise.resolve(null);
+  /* desk-p62: a parcel with no picture yet (pack still opening, no signal) is asked again after 15 s, never stuck as missing */
+  if (Aer.cache[key] === null && Aer.retry[key] && Date.now() - Aer.retry[key] > 15000) { delete Aer.cache[key]; delete Aer.retry[key]; }
   if (Aer.cache[key] !== undefined) return Promise.resolve(Aer.cache[key]);
   return DB.get('aerials', key).then(function(blob){
+    if (blob) return blob;
+    /* desk-p62 (MT 11/1 Clark, every parcel "No aerial saved" with the pack complete in Chrome): no folder picture = the
+       parcel cut from the county's aerials pack (desk/imagery.js parcelAerial), outline in yellow; live NAIP fills gaps */
+    var r = _rowFor(seq), p = r && ll(r); if (!p || !window.DeskImagery || !DeskImagery.parcelAerial) return null;
+    var b = boundsFor(seq);
+    return DeskImagery.parcelAerial({ lat: p[0], lng: p[1], rings: b ? b.rings : null, bb: b ? b.bb : null }).then(function(pb){
+      if (!pb) Aer.retry[key] = Date.now();
+      return pb || null; });
+  }).then(function(blob){
     if (Aer.cache[key] !== undefined) return Aer.cache[key];
     var url = blob ? URL.createObjectURL(blob) : null; Aer.cache[key] = url;
     if (url) { Aer.order.push(key); while (Aer.order.length > 40) { var old = Aer.order.shift(); if (old !== aerialKey(state.currentSeq) && Aer.cache[old]) { URL.revokeObjectURL(Aer.cache[old]); delete Aer.cache[old]; } } }
@@ -3208,6 +3225,7 @@ function renderAerialViews(){   // the overlay is the only aerial view; nothing 
   var key = aerialKey(seq), u = Aer.cache[key], r = _rowFor(seq);
   $('aerover-cap').innerHTML = 'SEQ ' + esc(seq) + ' · ' + esc(r ? r.street : '') + (r && r.city ? ', ' + esc(r.city) : '') +
     '<small>' + esc(r ? r.parcelId : '') + ' · ↑ ↓ next / previous parcel · click or Esc to close</small>';
+  if (u === null && Aer.retry[key] && Date.now() - Aer.retry[key] > 15000) u = undefined;   /* desk-p62: ask the pack again */
   if (u === undefined) { $('aerover-body').innerHTML = '<div class="none">Loading…</div>'; $('aerover-body').removeAttribute('data-k');
     loadAerial(seq).then(function(){ if (aerialKey(state.currentSeq) === key) renderAerialViews(); }); return; }
   var ob = $('aerover-body'); if (ob.getAttribute('data-k') !== key + (u ? '1' : '0')) { ob.setAttribute('data-k', key + (u ? '1' : '0'));
