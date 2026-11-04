@@ -57,10 +57,10 @@ try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations
 try { if (location.hostname === 'lhvconsultingllc.github.io' && /\/field-log\/desk\.html$/.test(location.pathname) && !/[?&]stay=1/.test(location.search)) location.replace('/map.html' + location.search + location.hash); } catch (e) {}</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<!-- LEDGERSTONE TYPE (10/30, docs/brand/type.css): Cormorant Garamond + Inter from Google Fonts, never render-blocking. Asked for only
+<!-- LEDGERSTONE TYPE (10/30, docs/brand/type.css): Inter from Google Fonts (desk-p75: the map is Inter only), never render-blocking. Asked for only
      with signal, as a print sheet that switches on when it lands; no signal or a slow hotspot = the system face, same layout, nothing waits. -->
 <script>(function(){ try { if (navigator.onLine === false) return; var l = document.createElement('link'); l.rel = 'stylesheet'; l.media = 'print';
-  l.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap';
+  l.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
   l.onload = function(){ l.media = 'all'; }; l.onerror = function(){ try { l.remove(); } catch (e) {} }; document.head.appendChild(l); } catch (e) {} })();</script>
 <title>LHV Field Log · Desk</title>
 <!-- ════════════════════════════════════════════════════════════════════════
@@ -81,19 +81,181 @@ try { if (location.hostname === 'lhvconsultingllc.github.io' && /\/field-log\/de
 <script src="desk/vendor/xlsx.full.min.js"></script>
 <!-- mock backend + camera simulator: fetched ONLY on this Mac's own test server (localhost)
      AND only with an explicit ?mock=<folder>. On the live site it is never even requested. -->
+<script>/* desk-p66 KESTREL APP (window.LSNative, injected by the app at document start): laptop-only setup, puck and folder
+   controls are hidden; the app does pairing, downloads, GPS and the link itself. Laptops never get the class. */
+try { if (window.LSNative && window.LSNative.app) document.documentElement.classList.add('kapp'); } catch (e) {}</script>
+<style>
+html.kapp #setup,html.kapp #reload-link,html.kapp #help-link,html.kapp #prep-btn,html.kapp #prep-st,html.kapp #gps-btn,html.kapp #geo-btn,
+html.kapp #gps-toggle,html.kapp #signin-block,html.kapp #open-folder,html.kapp #open-folder + .hint,html.kapp #reopen{display:none !important}
+/* desk-p69 (Dustin 11/2: "move the buttons on the map down on the bottom right, now that connect to gps is gone"): zoom,
+   full map and the route pen stand in one column over the Map panel, under his thumb (placed by _appPlaceCtl) */
+html.kapp .leaflet-top.leaflet-left .leaflet-control{margin:0 !important}
+html.kapp #rd-tools{left:calc(100% + 6px);right:auto}
+/* desk-p78 (Dustin 11/2: "move the split button to the top right, then have the gps center to the left of the map button on
+   the bottom row, and then the pencil above claude on the bottom left … thats how i want it layed out"); placed by _appPlaceCtl */
+html.kapp #me-btn,html.kapp #rd-row{position:absolute;z-index:520}
+html.kapp #rd-row.rd-on #rd-tools{display:flex}
+html.kapp #addrbanner{right:68px !important}   /* the full-map button has the top-right corner */
+/* desk-p78 (Dustin: "i dont want any buttons covering up other buttons … needs to look clean"): the bottom row, right to left,
+   is MAP · Center on me · mph; everything that opens bottom-left (route box, day card, end picker, Ask Claude's panel, a
+   big aerial) starts beside the Ask Claude button and ends before that row, so the pen and Claude stay uncovered */
+html.kapp #mph{height:48px;box-sizing:border-box;border-radius:11px;border:1px solid rgba(255,255,255,.2);background:rgba(17,19,28,.94);padding:0 12px}
+html.kapp #askc-pop{left:76px !important;bottom:12px !important}
+html.kapp #askc-chips{margin:0 12px 4px}
+html.kapp #askc-chips .askc-chip{margin:4px 0;padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;text-align:center}   /* one line */
+/* the route box (Dustin: "make it wider and cleaner and fit into a box"): two columns, nothing scrolls. Left: the next turn,
+   big, and THEN under it. Right: ROUTING TO SEQ + Stop, distance · time, the address. The road-name/credit lines drop out */
+html.kapp #route-slot[data-corner="bl"]{overflow:hidden !important;padding:10px 44px 10px 12px !important}
+html.kapp #route-slot[data-corner="bl"] #route-slot-body{display:grid !important;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);
+  grid-template-areas:"mv k" "mv d" "then st";column-gap:14px;row-gap:6px;align-items:center}
+html.kapp #route-slot[data-corner="bl"] .rt-mv{grid-area:mv;margin:0 !important;align-self:stretch}
+html.kapp #route-slot[data-corner="bl"] .rt-k{grid-area:k;margin:0 !important}
+html.kapp #route-slot[data-corner="bl"] .rt-k .rt-stop{margin-right:0 !important}
+html.kapp #route-slot[data-corner="bl"] .rt-k{flex-wrap:nowrap;min-width:0}
+html.kapp #route-slot[data-corner="bl"] .rt-k > span{font-size:0;white-space:nowrap}   /* just SEQ 100 + Stop: the box is the route */
+html.kapp #route-slot[data-corner="bl"] .rt-k > span b{font-size:var(--fs-md)}
+html.kapp #route-slot[data-corner="bl"] .rt-d{grid-area:d;margin:0 !important}
+html.kapp #route-slot[data-corner="bl"] .rt-d .s{display:none}
+html.kapp #route-slot[data-corner="bl"] .rt-st{grid-area:st;margin:0 !important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.kapp #route-slot[data-corner="bl"] .rt-then{grid-area:then;margin:0 !important;padding-top:0 !important;border-top:0 !important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.kapp #route-slot[data-corner="bl"] .rt-n{display:none !important}
+html.kapp #route-slot[data-corner="bl"] .rt-turn.msg,html.kapp #route-slot[data-corner="bl"] .rt-close{grid-column:1 / -1}
+/* desk-p69 (Dustin 11/2): finger-sized column buttons; "Center on GPS" labelled, grey until the first fix */
+/* desk-p70 (Dustin's photo of the column): ONE column, every button the same 48 px square, the same dark fill, border and
+   corners, icons centred; +/- a joined pair; the minimized Map panel a square "MAP" button; placed by _appPlaceCtl */
+html.kapp #mapbtns{gap:8px !important}
+html.kapp #mapbtns .wbtn,html.kapp #me-btn,html.kapp #rd-pen,html.kapp #dp-end,html.kapp #dp-day,html.kapp #tilebar.min{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;
+  box-sizing:border-box !important;border-radius:11px !important;border:1px solid rgba(255,255,255,.2) !important;background:rgba(17,19,28,.94) !important;
+  box-shadow:0 2px 8px rgba(0,0,0,.5) !important;align-items:center;justify-content:center;padding:0 !important;line-height:1 !important;color:#e8ecf7}
+html.kapp .dp #dp-end,html.kapp .dp #dp-day,html.kapp #tilebar.min{display:flex !important}
+html.kapp #dp-end,html.kapp #dp-day{font-size:var(--fs-lg) !important;text-align:center}
+html.kapp #dp-end.on,html.kapp #dp-day.on,html.kapp #me-btn.on{background:#1f6fe5 !important;border-color:#cfe0ff !important;box-shadow:0 0 0 3px rgba(79,124,255,.45),0 2px 8px rgba(0,0,0,.5) !important}
+/* desk-p71 (Dustin: "plus and minus need to go back to the top left"; "keep the mid screen functional for still seeing if
+   youre driving by stuff"): +/- top-left; nothing over the middle half of the map: every panel docks to an edge band */
+html.kapp .leaflet-top.leaflet-left .leaflet-control-zoom{margin:12px 0 0 12px !important}
+html.kapp #k-dock{position:absolute;z-index:820;left:auto;right:12px;bottom:140px;width:330px;display:none;flex-direction:column;background:rgba(11,13,20,.95);
+  border:1px solid #4f7cff;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.55);overflow:hidden;color:#e6e8f0}
+html.kapp #k-dock.on{display:flex}
+html.kapp #k-dock .kd-h{display:flex;align-items:center;gap:6px;padding:4px 6px 4px 12px;min-height:40px;font:600 var(--fs-sm) var(--sans);color:#dbe6ff;font-variant-numeric:tabular-nums}
+html.kapp #k-dock .kd-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.kapp #k-dock .kd-h button{flex:none;width:36px;height:32px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#e8ecf7;font-size:var(--fs-md);padding:0}
+html.kapp #k-dock .kd-b{overflow:auto;border-top:1px solid rgba(255,255,255,.08)}
+html.kapp #k-dock.col .kd-b{display:none}
+html.kapp #k-dock #dp-daycard{position:static !important;display:block !important;max-width:none !important;border:0 !important;background:transparent !important;box-shadow:none !important;margin:0 !important}
+html.kapp #dp-chip{left:auto !important;right:12px !important}
+html.kapp body .leaflet-control-zoom{border:1px solid rgba(255,255,255,.2) !important;border-radius:11px !important;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.5) !important}
+html.kapp body .leaflet-control-zoom a{width:48px !important;height:44px !important;line-height:44px !important;font-size:var(--fs-xl) !important;background:rgba(17,19,28,.94) !important;border-radius:0 !important}
+html.kapp #tilebar.min .htab{display:flex !important;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 !important;width:100%;height:100%;color:#e8ecf7}
+html.kapp #tilebar.min .htab .ml,html.kapp #me-btn .me-l{font:700 var(--fs-xs) var(--sans);letter-spacing:.6px;line-height:1}
+html.kapp #me-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0;color:#e8ecf7}
+html.kapp #me-btn .me-l{font:700 var(--fs-xs) var(--sans);letter-spacing:.6px;line-height:1}
+html.kapp #me-btn.nofix{opacity:.5}
+/* the Aerial button on the parcel card: a real finger target in the app, no keyboard hint */
+html.kapp body #log #card .aerfloat{min-height:44px;min-width:104px;padding:6px 14px;font-size:var(--fs-md);border-radius:10px;justify-content:center}
+html.kapp #card .aerfloat kbd{display:none}
+/* desk-p73: the route box in the app (placed by _appPlaceRoute): docked to an edge, the next turn second and big, a
+   longer box scrolls inside; the city line and the road credit (on the map's credit line) stay out to save room */
+html.kapp #route-slot{z-index:830;box-sizing:border-box;overflow:auto;padding:8px 48px 8px 12px !important;border-color:#4f7cff;background:rgba(11,13,20,.95)}
+html.kapp #route-slot.min{overflow:visible}
+html.kapp #route-slot-body{display:flex;flex-direction:column}
+html.kapp #route-slot .rt-k{order:0;flex-wrap:nowrap;white-space:nowrap}
+html.kapp #route-slot .rt-k .rt-stop{margin-right:0;min-height:40px;padding:6px 14px}
+html.kapp #route-slot .rt-k kbd{display:none}
+html.kapp #route-slot .rt-mv{order:1;margin-top:6px}
+html.kapp #route-slot .rt-mv .rt-turn{font-size:var(--fs-xl);line-height:1.15}
+html.kapp #route-slot .rt-turn.msg{order:1}
+html.kapp #route-slot .rt-d{order:2;margin-top:6px}
+html.kapp #route-slot .rt-st{order:3;font-size:var(--fs-md);margin-top:4px}
+html.kapp #route-slot .rt-ct{display:none}
+html.kapp #route-slot .rt-then{order:4}
+html.kapp #route-slot .rt-n{order:5}
+html.kapp #route-slot .rt-n:last-child{display:none}
+html.kapp #route-slot .rt-close{order:6;align-self:flex-start;min-height:40px}
+html.kapp #route-slot .hmin{top:6px;right:6px}
+/* desk-p75 (Dustin 11/2: "Lee 11/2 on the map can go on line one … taking up too much space, almost like the phone, same
+   vibe"): the sidebar header is ONE row of even chips like the camera's top row (beta46): LEE · 11/2 (blue), driver,
+   the status icons, SHIP at the right end; one height, Inter 600 ALL CAPS ("all capital, not that font"), content centred */
+/* desk-p76 (Dustin: "or make it two lines in a way that makes sense"): TWO lines grouped by meaning, so a long county
+   never shrinks. Line 1 = where and who: LEE · 11/2 (opens the county switcher), the driver, SHIP at the right end.
+   Line 2 = the system: cloud, camera, uploads (and the camera's held parcels when there are any), evenly spaced. */
+html.kapp body #desk #log .topbar{flex-wrap:wrap !important;justify-content:flex-start !important;gap:6px 5px !important;padding:8px 8px !important;overflow:hidden}
+html.kapp body #desk #log .topbar .tb-job{order:1}html.kapp body #desk #log .topbar #drv-chip{order:2}html.kapp body #desk #log .topbar #ship-btn{order:3}
+/* desk-p77 (Dustin: "integrate it in to the counts rows somehow to make it all even and less space"): the status icons
+   leave the header and sit in the counts grid as one more tile (the open slot after RATING), 24 px circles. _appChips moves them. */
+html.kapp body #desk #log .stats .pillrow{order:99 !important;display:flex !important;justify-content:space-evenly !important;align-items:center;gap:6px !important;padding:0 2px !important;
+  background:var(--surface);border-radius:var(--radius-sm);min-width:0;min-height:0}
+html.kapp body #desk #log .stats .pill.ico,html.kapp body #desk #log .stats #allclear,html.kapp body #desk #log .stats #link-pill{width:22px !important;min-width:22px !important;
+  max-width:22px !important;height:22px !important;min-height:22px !important;font-size:12px !important}
+html.kapp body #desk #log .stats .pill .k-i.up{font-size:13px}
+html.kapp body #desk #log .stats .pill .k-b{top:-4px;right:-6px;min-width:13px;height:13px;font-size:9px}
+/* Dustin: "does this new system need the rating count?" No: the server rates, and the ↑ icon already carries the upload
+   count. In the app the counts are TO DRIVE · DRIVEN · TOTAL plus the status tile, ONE even row. */
+html.kapp body #desk #log .stat[data-f="rating"],html.kapp body #desk #log .stat[data-f="uploading"],html.kapp body.dp #desk #log .stat[data-f="incomplete"]{display:none !important}
+html.kapp body #desk #log .stats{grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.45fr) !important}   /* the icon tile is wider (Dustin: "smidge too crowded on the icons") */
+html.kapp body #desk #log .stat{display:flex !important;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 1px !important}
+html.kapp body #desk #log .stat .n{font-size:var(--fs-md);line-height:1.05;margin:0 !important}
+html.kapp body #desk #log .stat .l{font-size:10.5px;letter-spacing:.3px;line-height:1.1;margin:0 !important}
+html.kapp body #desk #log .topbar .tb-job,html.kapp body #desk #log .topbar .chip,html.kapp body #desk #log .pill,
+html.kapp body #desk #log #allclear,html.kapp body #desk #log .topbar #ship-btn{height:30px !important;min-height:30px !important;box-sizing:border-box !important;
+  display:inline-flex;align-items:center;justify-content:center;line-height:1 !important;border-radius:999px !important;margin:0 !important;flex:0 0 auto;white-space:nowrap}
+html.kapp body #desk #log .topbar .tb-job,html.kapp body #desk #log .topbar .chip,html.kapp body #desk #log .pill.mock,html.kapp body #desk #log .topbar #ship-btn{
+  font:600 12px var(--sans) !important;letter-spacing:.5px;text-transform:uppercase;font-variant-numeric:tabular-nums;padding:0 8px !important}
+html.kapp body #desk #log .topbar .tb-job{display:block !important;flex:1 1 auto;min-width:44px;overflow:hidden;text-overflow:ellipsis;text-align:center;line-height:28px !important;
+  background:rgba(15,18,26,.82);border:1px solid rgba(79,124,255,.6);color:#dbe6ff}
+html.kapp body #desk #log .topbar .tb-job.dd{cursor:pointer}   /* desk-p76: it opens TODAY's county list (the old blue bar) */
+html.kapp body #desk #log .topbar .tb-job small{font:inherit !important;color:inherit;margin-left:0 !important}
+html.kapp body #desk #log .topbar .tb-job small::before{content:'\00a0·\00a0'}
+html.kapp body #desk #log .topbar .chip,html.kapp body #desk #log .pill{background:rgba(15,18,26,.82);border:1px solid rgba(255,255,255,.18)}
+html.kapp body #desk #log .topbar #drv-chip{flex:0 0 auto;color:#ffd7b0;border-color:rgba(192,112,58,.65);font-weight:700 !important}
+html.kapp body #desk #log .pillrow{gap:3px !important;overflow:visible !important}
+html.kapp body #desk #log .pill.mock{display:none !important}   /* localhost tests only; the footer says mock */
+/* desk-p76 (Dustin's iPad photo: the camera chip "📷 ✕" was wide, ↑ clipped, SHIP crowded): every status chip is ONE
+   icon in a 30 px circle; the state is the ring (green ok, amber waiting, rust/red trouble) and a small corner badge
+   (✕ camera not heard, the upload count only when > 0). Written by _appIcoChip after each render. */
+html.kapp body #desk #log .pill.ico,html.kapp body #desk #log #allclear,html.kapp body #desk #log #link-pill{position:relative;overflow:visible !important;
+  width:30px !important;min-width:30px !important;max-width:30px !important;padding:0 !important;border-width:1.5px !important;
+  font:14px/1 "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",var(--sans) !important}
+html.kapp body #desk #log .pill.k-ok{border-color:#2ecc8a !important;background:rgba(46,204,138,.14)}
+html.kapp body #desk #log .pill.k-wait{border-color:#f5a623 !important;background:rgba(245,166,35,.12)}
+html.kapp body #desk #log .pill.k-bad{border-color:#e84040 !important;background:rgba(232,64,64,.16)}
+html.kapp body #desk #log .pill.k-rust{border-color:#c0703a !important;background:rgba(192,112,58,.18)}
+html.kapp body #desk #log .pill .k-i{font:inherit}
+html.kapp body #desk #log .pill .k-i.up{font:700 15px/1 var(--sans);color:#e8ecf7}
+html.kapp body #desk #log .pill .k-b{position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;padding:0 3px;box-sizing:border-box;border-radius:999px;
+  display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--sans);color:#fff;background:#e84040;border:1px solid #0b0d14;pointer-events:none}
+html.kapp body #desk #log .pill.k-rust .k-b{background:#c0703a}html.kapp body #desk #log .pill.k-wait .k-b{background:#d98a12}
+/* the old blue TODAY bar is folded into the county chip; its list drops down under the header */
+html.kapp #today-dd{margin:0 !important;height:0}
+html.kapp #today-dd .bar{display:none !important}
+html.kapp #today-dd .menu{top:0 !important;left:8px !important;right:8px !important}
+html.kapp body #desk #log .topbar #ship-btn{margin-left:auto !important;padding:0 10px !important;font-weight:700 !important;width:auto !important}
+/* desk-p68: center on me (follow) in the column; on = blue ring */
+#me-btn.on{background:#1f6fe5 !important;border-color:#cfe0ff !important;color:#fff;box-shadow:0 0 0 3px rgba(79,124,255,.45),0 2px 8px rgba(0,0,0,.5) !important}
+</style>
 <script>window.__DESK_MOCK = (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && new URLSearchParams(location.search).get('mock')) || null;
 if (window.__DESK_MOCK) document.write('<script src="desk/mock.js"><\/script>');</script>
 <style>
 :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#232635;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);
   --text:#f0f0f0;--muted:#9a9eb6;--accent:#4f7cff;--success:#2ecc8a;--warning:#f5a623;--danger:#e84040;--sky:#29ABE2;
   --radius:12px;--radius-sm:8px;
-  /* LEDGERSTONE TYPE (10/30, docs/brand/type.css): Cormorant Garamond = wordmark, headings, hero numbers (lining figures);
+  /* LEDGERSTONE TYPE (10/30, docs/brand/type.css); desk-p75: the map is Inter only, titles in caps;
      Inter = every line of text and data (numbers 600 + tabular figures). No signal = the system face (Segoe UI on the laptop). */
-  --serif:"Cormorant Garamond",Baskerville,Georgia,serif;
+  /* desk-p75 (Dustin 11/2: "all capital, not that font … it matches nothing else"): the map is ONE family. Cormorant is
+     gone; the titles (job, county, dialog headings) are Inter 600 ALL CAPS, letter-spaced like the chips. --serif stays
+     as a name only so nothing that still says var(--serif) falls back to a stray face. */
+  --serif:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
   --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  /* desk-p72 ONE TYPE SCALE (Dustin 11/2: "too many [fonts] ... none of them fit the ledgerstone switchover"): six sizes,
+     nothing under 11 (docs/brand/type.css). Inter everywhere (desk-p75: the titles too, in caps). */
+  --fs-xs:11px;--fs-sm:13px;--fs-md:15px;--fs-lg:18px;--fs-xl:24px;--fs-hero:30px;
   --font-display:var(--sans);
   --split:25%}
 *{box-sizing:border-box;margin:0;padding:0}
+/* desk-p72: Leaflet ships Helvetica/Arial and form controls default to the system face; everything is Inter, figures tabular */
+html body,html body button,html body input,html body select,html body textarea,html body kbd,html body code,
+html body .leaflet-container,html body .leaflet-tooltip,html body .leaflet-popup-content,html body .leaflet-control-attribution{font-family:var(--sans)}
+html body .leaflet-container{font-size:var(--fs-sm)}
+html body{font-variant-numeric:tabular-nums}
 html,body{height:100%;overflow:hidden}
 /* TOUCH LAPTOPS (Dustin 2026-10-11: "Our laptops are touch"). A pinch or double-tap
    anywhere outside the map must never zoom the PAGE; pan-x pan-y keeps finger
@@ -119,22 +281,22 @@ body{position:fixed;left:0;top:0;right:0;bottom:0;overscroll-behavior:none}
 /* FINGER-SIZED TARGETS on touch laptops (any-pointer:coarse = a touchscreen is present,
    even with a trackpad too). About 40px is the smallest reliable fingertip target. */
 @media (any-pointer:coarse){
-  html body .hud .hmin{width:38px;height:36px;top:4px;right:4px;font-size:18px}
-  html body .hud.min .htab{padding:11px 16px;font-size:14px}
+  html body .hud .hmin{width:38px;height:36px;top:4px;right:4px;font-size:var(--fs-lg)}
+  html body .hud.min .htab{padding:11px 16px;font-size:var(--fs-md)}
   html body .sbtn{min-height:40px;padding:8px 12px}
   html body .act{min-height:48px}
   html body #nppanel .np-rate button,html body #nppanel .np-why button{min-height:44px}
   html body #nppanel .np-btns .btn{min-height:44px;padding:9px 16px}
-  html body .leaflet-touch .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:22px}
+  html body .leaflet-touch .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:var(--fs-xl)}
   html body #tilebar .row2:first-of-type{padding-right:46px}
   html body #mapbtns{top:112px}   /* clears the taller zoom bar (2 × 44px + margins) */
   html body #mapbtns button{min-width:44px;min-height:40px}
   html body #order,html body #q{min-height:42px}
   html body .stat{min-height:52px}
 }
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;font-variant-numeric:tabular-nums}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-md);font-variant-numeric:tabular-nums}
 button{font:inherit;color:inherit;cursor:pointer}
-kbd{font:600 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.12);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;color:#cfd3e6}
+kbd{font:600 var(--fs-xs) var(--sans);font-variant-numeric:tabular-nums;background:rgba(255,255,255,.12);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;color:#cfd3e6}
 
 #desk{display:grid;grid-template-columns:minmax(290px,var(--split)) 8px 1fr;grid-template-rows:100vh;height:100vh;width:100vw;overflow:hidden}
 #log{container-type:inline-size;container-name:log;display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;overflow-x:hidden;overflow-y:auto;background:var(--bg);border-right:1px solid var(--border)}
@@ -146,10 +308,10 @@ kbd{font:600 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.1
 
 /* ── LEFT: THE LOG ───────────────────────────────────────────────────────── */
 .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border)}
-.brand{font:600 17px var(--serif);font-variant-numeric:lining-nums;letter-spacing:.3px;white-space:nowrap}
+.brand{font:600 var(--fs-md) var(--sans);text-transform:uppercase;letter-spacing:.6px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .brand small{color:var(--muted);font-weight:600}
-.chip{font:600 13px var(--font-display);padding:3px 9px;border-radius:20px;border:1.5px solid var(--border2);white-space:nowrap}
-.pill{font:600 12.5px var(--font-display);padding:4px 9px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
+.chip{font:600 var(--fs-sm) var(--sans);padding:3px 9px;border-radius:20px;border:1.5px solid var(--border2);white-space:nowrap}
+.pill{font:600 var(--fs-sm) var(--sans);padding:4px 9px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
 .pill.ok{background:rgba(46,204,138,.14);color:var(--success);border-color:rgba(46,204,138,.4)}
 .pill.warn{background:rgba(245,166,35,.14);color:var(--warning);border-color:rgba(245,166,35,.45)}
 .pill.bad{background:rgba(232,64,64,.16);color:#ff9a9a;border-color:rgba(232,64,64,.5)}
@@ -158,40 +320,40 @@ kbd{font:600 11px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.1
 /* top row (Dustin 10/11): status as icons; county + drive-file date on the right; the old title row is gone */
 .topbar{flex-wrap:nowrap}
 .pill.ico{padding:0 7px;min-width:38px;height:26px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font:16px/1 "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif}
-.pill.ico b{font:600 13px var(--font-display)}
-.pill.ico.bad b{color:#ff7b7b;font-size:14px}
+.pill.ico b{font:600 var(--fs-sm) var(--sans)}
+.pill.ico.bad b{color:#ff7b7b;font-size:var(--fs-md)}
 html body #log .topbar #allclear.ok, html body #log .topbar #allclear.ok b{color:#3ee08f}
 html body #log .topbar #allclear.bad{color:#ff7b7b}
 /* TOP (Dustin 10/11): county + drive-file date CENTRED on line 1; every chip on a skinny line 2, centred */
 html body #desk #log .topbar{display:flex;flex-wrap:wrap!important;justify-content:center;align-items:center;gap:3px 4px;padding:4px 8px 5px}
-html body #desk #log .topbar .tb-job{flex:0 0 100%;text-align:center;font-size:20px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-html body #desk #log .topbar .tb-job small{font-size:13px;margin-left:5px}
+html body #desk #log .topbar .tb-job{flex:0 0 100%;text-align:center;font-size:var(--fs-lg);line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html body #desk #log .topbar .tb-job small{font-size:var(--fs-sm);margin-left:5px}
 html body #desk #log .topbar .grow{display:none}
-html body #desk #log .topbar .chip{flex:0 0 auto;font-size:11px;padding:0 6px;height:20px;display:inline-flex;align-items:center}
+html body #desk #log .topbar .chip{flex:0 0 auto;font-size:var(--fs-xs);padding:0 6px;height:20px;display:inline-flex;align-items:center}
 html body #desk #log .topbar .pillrow{flex:0 0 auto;gap:4px!important;overflow:visible!important}
-html body #desk #log .topbar .pill.ico{min-width:30px;height:20px;padding:0 6px;font-size:12.5px;flex:0 0 auto}
-html body #desk #log .topbar .pill.ico b{font-size:12px}
+html body #desk #log .topbar .pill.ico{min-width:30px;height:20px;padding:0 6px;font-size:var(--fs-sm);flex:0 0 auto}
+html body #desk #log .topbar .pill.ico b{font-size:var(--fs-sm)}
 /* photo uploads + SHIP live on the top line (Dustin 10/11): green ✓ = all up; red = the countdown of photos still uploading */
 html body #log .topbar #allclear{flex:0 0 auto;min-height:0;height:20px;padding:0 6px;border-radius:20px;white-space:nowrap;display:inline-flex;font:13px/1 "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif}
-html body #log .topbar #ship-btn{flex:0 0 auto;height:20px;min-height:20px!important;font-size:11px;padding:0 10px;margin-left:4px;border-radius:20px;width:auto!important}
-.tb-job{font:600 17px var(--serif);font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.tb-job small{color:var(--muted);font:600 14px var(--sans);margin-left:6px}
+html body #log .topbar #ship-btn{flex:0 0 auto;height:20px;min-height:20px!important;font-size:var(--fs-xs);padding:0 10px;margin-left:4px;border-radius:20px;width:auto!important}
+.tb-job{font:600 var(--fs-md) var(--sans);text-transform:uppercase;letter-spacing:.6px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tb-job small{color:var(--muted);font:600 var(--fs-md) var(--sans);margin-left:6px}
 .title{display:none !important}
 .title{padding:6px 12px 0}
-.title h1{font:600 22px var(--serif);font-variant-numeric:lining-nums;line-height:1.15;overflow-wrap:anywhere}
-.title .sub{color:var(--muted);font-size:11.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stale{margin:4px 12px 0;padding:6px 10px;border-radius:8px;background:#3a2a12;color:#ffd08a;font-size:13px;display:none}
+.title h1{font:600 var(--fs-lg) var(--sans);text-transform:uppercase;letter-spacing:.6px;font-variant-numeric:tabular-nums;line-height:1.15;overflow-wrap:anywhere}
+.title .sub{color:var(--muted);font-size:var(--fs-xs);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stale{margin:4px 12px 0;padding:6px 10px;border-radius:8px;background:#3a2a12;color:#ffd08a;font-size:var(--fs-sm);display:none}
 
 .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:6px 10px}
 .stat{background:var(--surface);border:1.5px solid transparent;border-radius:var(--radius-sm);padding:5px 2px;text-align:center;cursor:pointer;min-width:0}
 .stat:hover{border-color:var(--border2)}.stat.on{border-color:var(--accent);background:var(--surface2)}
-.stat .n{font:600 19px var(--font-display);font-variant-numeric:tabular-nums;line-height:1.1}
-.stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.2px;color:var(--muted);line-height:1.15}
+.stat .n{font:600 var(--fs-lg) var(--sans);font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .l{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.2px;color:var(--muted);line-height:1.15}
 .n.pending{color:#d7dbe8}.n.incomplete{color:var(--danger)}.n.uploading{color:var(--success)}.n.rating{color:var(--success)}.n.complete{color:#9aa1b8}   /* same meaning as the dots: green uploading, red needs something */.n.total{color:var(--sky)}
 
 .gate{margin:0 12px;display:flex;gap:8px;align-items:stretch}
-#allclear{flex:1;font:600 13px var(--font-display);padding:9px 10px;border-radius:var(--radius-sm);background:var(--surface);color:#c9d2e0;display:flex;align-items:center}
-#ship-btn{flex:0 0 auto;background:var(--success);color:#08130c;border:0;border-radius:var(--radius-sm);font:700 17px var(--font-display);padding:0 18px;letter-spacing:.5px}
+#allclear{flex:1;font:600 var(--fs-sm) var(--sans);padding:9px 10px;border-radius:var(--radius-sm);background:var(--surface);color:#c9d2e0;display:flex;align-items:center}
+#ship-btn{flex:0 0 auto;background:var(--success);color:#08130c;border:0;border-radius:var(--radius-sm);font:700 var(--fs-lg) var(--sans);padding:0 18px;letter-spacing:.5px}
 #ship-btn[data-blocked]{opacity:.45}
 #ship-btn:disabled{opacity:.4;cursor:default}
 
@@ -200,11 +362,11 @@ html body #log .topbar #ship-btn{flex:0 0 auto;height:20px;min-height:20px!impor
 #card > .ai{overflow:auto;min-height:0;flex:1 1 auto}   /* the driver buttons never scroll away; only the AI text does */
 #card > .cardhead,#card > .acts{flex:0 0 auto}
 #card .seqline{display:flex;align-items:center;gap:8px}
-#card .seqbig{font:600 30px var(--serif);font-variant-numeric:lining-nums tabular-nums;letter-spacing:.5px}
-#card .addr{font:600 20px var(--font-display);line-height:1.15;margin-top:4px;color:#fff}
-#card .city{font:600 14px var(--font-display);color:#c9cee0;margin-top:1px}
-#card .pid{color:var(--muted);font:600 13px ui-monospace,Consolas,monospace;margin-top:2px}
-.stchip{font:600 12px var(--font-display);padding:3px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px}
+#card .seqbig{font:600 var(--fs-hero) var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.5px}
+#card .addr{font:600 var(--fs-lg) var(--sans);line-height:1.15;margin-top:4px;color:#fff}
+#card .city{font:600 var(--fs-md) var(--sans);color:#c9cee0;margin-top:1px}
+#card .pid{color:var(--muted);font:600 var(--fs-sm) var(--sans);font-variant-numeric:tabular-nums;margin-top:2px}
+.stchip{font:600 var(--fs-sm) var(--sans);padding:3px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px}
 .stchip.pending{background:rgba(255,255,255,.1);color:#d7dbe8}.stchip.incomplete{background:rgba(245,166,35,.18);color:var(--warning)}
 .stchip.uploading{background:rgba(232,64,64,.18);color:#ff8f8f}.stchip.rating{background:rgba(79,124,255,.2);color:#9db5ff}
 .stchip.complete{background:rgba(46,204,138,.18);color:var(--success)}.stchip.ship{background:rgba(41,171,226,.18);color:var(--sky)}
@@ -220,73 +382,73 @@ html body #log #card .seqpill{padding:3px 10px;border-radius:9px;line-height:1.1
 #card .seqpill.incomplete{background:var(--danger);color:#fff}
 #card .seqpill.complete{background:#5d6478;color:#e6e8f0}
 #card .seqpill.shipped{opacity:.75}
-html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px}
+html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:var(--fs-lg)}
 #card .toprow .areabig{margin-left:auto;flex:none}
-#card .stchip.mini{font:600 11px/1 var(--font-display);padding:4px 6px;letter-spacing:.2px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-flex;align-items:center}
+#card .stchip.mini{font:600 var(--fs-xs)/1 var(--sans);padding:4px 6px;letter-spacing:.2px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-flex;align-items:center}
 #card .stchip.camhere{background:rgba(46,204,138,.16);color:#7cf0bd;border:1px solid #2ecc8a}
-#card .areabig{font:600 11px/1 var(--font-display);letter-spacing:.5px;color:#c9d2e0;background:rgba(79,163,255,.14);border:1.5px solid rgba(79,163,255,.55);border-radius:8px;padding:3px 7px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-#card .areabig b{font:700 20px/1 var(--font-display);color:#fff}
+#card .areabig{font:600 var(--fs-xs)/1 var(--sans);letter-spacing:.5px;color:#c9d2e0;background:rgba(79,163,255,.14);border:1.5px solid rgba(79,163,255,.55);border-radius:8px;padding:3px 7px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#card .areabig b{font:700 var(--fs-lg)/1 var(--sans);color:#fff}
 /* CONVENTION (Dustin 10/12): every button and chip centers its contents top to bottom */
 #card button,#card .stchip,#card .areabig,.pill,.act,.aerbtn{align-items:center}
 /* reference details (market value, parcel map) sit last, small and quiet */
-#card .cardfoot .details{border-bottom:0;border-top:1px solid var(--border);margin-top:6px;padding-top:5px;opacity:.75;font-size:11.5px}
-.ai-mini{font-size:13.5px;white-space:nowrap}.ai-mini b{font:600 14px var(--font-display)}
-#card .ai-mini{white-space:normal;overflow-wrap:anywhere}#card .ai-mini b{font-size:12.5px}   /* card: the board-up description wraps, never cut off (Dustin 10/21) */
-.ai-k{color:var(--muted);font-size:14px}
-.ai-big{font:600 24px var(--font-display)}
-.ai-pct{font:600 22px var(--font-display)}.ai-pct.hi{color:var(--danger)}.ai-pct.mid{color:var(--warning)}.ai-pct.lo{color:var(--success)}
-.ai-why{font-size:12px;color:#c3c7da;line-height:1.3;padding-bottom:5px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}   /* whole comment, smaller type, never cut off (Dustin 10/21) */
+#card .cardfoot .details{border-bottom:0;border-top:1px solid var(--border);margin-top:6px;padding-top:5px;opacity:.75;font-size:var(--fs-xs)}
+.ai-mini{font-size:var(--fs-sm);white-space:nowrap}.ai-mini b{font:600 var(--fs-md) var(--sans)}
+#card .ai-mini{white-space:normal;overflow-wrap:anywhere}#card .ai-mini b{font-size:var(--fs-sm)}   /* card: the board-up description wraps, never cut off (Dustin 10/21) */
+.ai-k{color:var(--muted);font-size:var(--fs-md)}
+.ai-big{font:600 var(--fs-xl) var(--sans)}
+.ai-pct{font:600 var(--fs-xl) var(--sans)}.ai-pct.hi{color:var(--danger)}.ai-pct.mid{color:var(--warning)}.ai-pct.lo{color:var(--success)}
+.ai-why{font-size:var(--fs-sm);color:#c3c7da;line-height:1.3;padding-bottom:5px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}   /* whole comment, smaller type, never cut off (Dustin 10/21) */
 .ai-why:empty{display:none}
-.ai-pill{font-size:14px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--surface2);text-align:right}
-.ai-wait{display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:12.5px;line-height:1.3;padding:5px 0}
+.ai-pill{font-size:var(--fs-md);font-weight:600;padding:3px 10px;border-radius:20px;background:var(--surface2);text-align:right}
+.ai-wait{display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:var(--fs-sm);line-height:1.3;padding:5px 0}
 .ai-wait span:last-child{overflow-wrap:anywhere}
 .spin{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;flex:0 0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 .acts{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:5px;margin-top:8px}
-.act{width:100%;min-width:0;padding:7px 4px;border-radius:10px;border:1.5px solid var(--border2);background:var(--surface2);color:#d6dae8;font:600 12.5px var(--font-display);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;line-height:1.15}
+.act{width:100%;min-width:0;padding:7px 4px;border-radius:10px;border:1.5px solid var(--border2);background:var(--surface2);color:#d6dae8;font:600 var(--fs-sm) var(--sans);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;line-height:1.15}
 .act span{max-width:100%;overflow-wrap:anywhere}
 .act:hover{border-color:#5b6280}
 .act.on.nvfr{background:#3d3410;border-color:#d8b42a;color:#ffe27a}
 .act.on.nop{background:#401a1a;border-color:#e05555;color:#ffb0b0}
 .act.on.flag{background:#3b2a5a;border-color:#a87bff;color:#e2d0ff}
-.act .q{font-size:11px;color:var(--muted);font-weight:600}
+.act .q{font-size:var(--fs-xs);color:var(--muted);font-weight:600}
 .act[disabled]{opacity:.45;cursor:not-allowed}
-.empty-card{color:var(--muted);font-size:14px;padding:6px 0}
+.empty-card{color:var(--muted);font-size:var(--fs-md);padding:6px 0}
 /* NO PHOTOS panel: inline under the card, never a modal over the map */
 #nppanel{margin:0 12px;padding:8px 10px 10px;background:#2a1418;border:1.5px solid #e05555;border-top:0;border-radius:0 0 var(--radius) var(--radius);flex:0 0 auto}
-#nppanel .np-h{font:700 15px var(--font-display);color:#ffb0b0}#nppanel .np-h span{font:600 12px var(--font-display);color:var(--muted);margin-left:4px}
-#nppanel .np-k{font:600 11px var(--font-display);letter-spacing:.5px;text-transform:uppercase;color:#d6dae8;margin-top:7px}#nppanel .np-k small{text-transform:none;color:var(--muted);font-weight:600}
+#nppanel .np-h{font:700 var(--fs-md) var(--sans);color:#ffb0b0}#nppanel .np-h span{font:600 var(--fs-sm) var(--sans);color:var(--muted);margin-left:4px}
+#nppanel .np-k{font:600 var(--fs-xs) var(--sans);letter-spacing:.5px;text-transform:uppercase;color:#d6dae8;margin-top:7px}#nppanel .np-k small{text-transform:none;color:var(--muted);font-weight:600}
 #nppanel .np-rate{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:4px}
-#nppanel .np-rate button,#nppanel .np-why button{padding:7px 0;border-radius:8px;border:1.5px solid var(--border2);background:var(--surface2);font:700 15px var(--font-display);color:#e8ebf5}
+#nppanel .np-rate button,#nppanel .np-why button{padding:7px 0;border-radius:8px;border:1.5px solid var(--border2);background:var(--surface2);font:700 var(--fs-md) var(--sans);color:#e8ebf5}
 #nppanel button.on{background:#e05555;border-color:#ff8a8a;color:#fff}
 #nppanel .np-why{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}#nppanel .np-why button{flex:1 1 70px;padding:7px 8px}
-#nppanel #np-text{flex:2 1 120px;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 14px var(--font-display);padding:6px 8px}
-#nppanel .np-lu{font-size:12.5px;color:#c9cee0;margin-top:7px;overflow-wrap:anywhere}#nppanel .np-lu b{color:#fff}
-#nppanel .np-err{color:#ffb38a;font:600 13px var(--font-display);margin-top:4px}#nppanel .np-err:empty{display:none}
-#nppanel .np-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}#nppanel .np-btns .btn{padding:7px 12px;font-size:14px}
-.ai2 .drv{font-size:11px;color:#ffb0b0;font-weight:600}
+#nppanel #np-text{flex:2 1 120px;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-md) var(--sans);padding:6px 8px}
+#nppanel .np-lu{font-size:var(--fs-sm);color:#c9cee0;margin-top:7px;overflow-wrap:anywhere}#nppanel .np-lu b{color:#fff}
+#nppanel .np-err{color:#ffb38a;font:600 var(--fs-sm) var(--sans);margin-top:4px}#nppanel .np-err:empty{display:none}
+#nppanel .np-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}#nppanel .np-btns .btn{padding:7px 12px;font-size:var(--fs-md)}
+.ai2 .drv{font-size:var(--fs-xs);color:#ffb0b0;font-weight:600}
 
 .search{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 6px}
-.search input{flex:1 1 130px;min-width:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 15px var(--font-display);padding:8px 10px}
-.search select{flex:1 1 96px;min-width:0;max-width:50%;min-height:36px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 13px var(--font-display);padding:0 6px}
+.search input{flex:1 1 130px;min-width:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-md) var(--sans);padding:8px 10px}
+.search select{flex:1 1 96px;min-width:0;max-width:50%;min-height:36px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-sm) var(--sans);padding:0 6px}
 #list{flex:1 1 0;min-height:100px;overflow:auto;padding:0 8px 10px}
 .row{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:9px;border:1.5px solid transparent;cursor:pointer}
 .row:hover{background:var(--surface)}
 .row.sel{background:var(--surface2);border-color:var(--accent)}
 .row.cam{box-shadow:inset 4px 0 0 #ff4fd8}
 /* SAME ADDRESS: one row for the group */
-.row .s small{font:600 12px var(--font-display);color:var(--muted);margin-left:3px}
-.gmem{display:inline-flex;align-items:center;gap:5px;margin:4px 6px 0 0;padding:5px 10px;min-height:34px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);font:600 13px var(--font-display)}
+.row .s small{font:600 var(--fs-sm) var(--sans);color:var(--muted);margin-left:3px}
+.gmem{display:inline-flex;align-items:center;gap:5px;margin:4px 6px 0 0;padding:5px 10px;min-height:34px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);font:600 var(--fs-sm) var(--sans)}
 .gmem.on{border-color:var(--accent);color:#cdd9ff}.gmem .dot{width:10px;height:10px}
-.row .s{font:700 18px var(--font-display);min-width:52px;font-variant-numeric:tabular-nums}
+.row .s{font:700 var(--fs-lg) var(--sans);min-width:52px;font-variant-numeric:tabular-nums}
 .row .a{flex:1;min-width:0}
-.row .a b{display:block;font:600 15px var(--font-display);line-height:1.2;overflow-wrap:anywhere}
-.row .a span{font-size:12.5px;color:var(--muted)}
-.row .ai2{font:600 13px var(--font-display);text-align:right;white-space:nowrap}
+.row .a b{display:block;font:600 var(--fs-md) var(--sans);line-height:1.2;overflow-wrap:anywhere}
+.row .a span{font-size:var(--fs-sm);color:var(--muted)}
+.row .ai2{font:600 var(--fs-sm) var(--sans);text-align:right;white-space:nowrap}
 .dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
 .dot.pending{background:#1f6fe5}.dot.incomplete{background:var(--danger)}.dot.uploading{background:var(--success)}.dot.rating{background:var(--success)}.dot.complete{background:#5d6478}
 .lo{color:var(--success)}.mid{color:var(--warning)}.hi{color:var(--danger)}.rt{color:#9db5ff}
-.foot{padding:6px 12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.foot{padding:6px 12px;border-top:1px solid var(--border);font-size:var(--fs-sm);color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .foot a{color:#9db5ff;cursor:pointer;text-decoration:underline}
 
 /* ── MAP SIDE ─────────────────────────────────────────────────────────────── */
@@ -294,18 +456,18 @@ html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px
    lat/lng. The box's bottom-left corner is square and sits on the coordinate; the
    pin rotates (and scales when selected) around that corner, so the point never moves. */
 .pin{width:30px;height:30px;margin:-30px 0 0 0;border-radius:50% 50% 50% 0;transform-origin:0 100%;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;
-  font:700 11.5px/1 var(--font-display);color:#0b0d14;border:2px solid rgba(0,0,0,.65);box-shadow:0 1px 4px rgba(0,0,0,.6);transition:transform .15s}
+  font:700 var(--fs-xs)/1 var(--sans);color:#0b0d14;border:2px solid rgba(0,0,0,.65);box-shadow:0 1px 4px rgba(0,0,0,.6);transition:transform .15s}
 /* DOT COLORS (Dustin 2026-10-11): BLUE = not taken (Maptitude's color; white read like road shields) · GREEN = done but not cleared (photos uploading OR the AI rating still landing) · RED = needs
    something · GONE = complete. Cleared dots (complete) leave the map; with
    "Show driven" on they come back dim grey so they never read as uploading. */
 .pin.inflight{box-shadow:0 0 0 4px #ffb020,0 2px 6px rgba(0,0,0,.5)}   /* shot, photos still on the phone (10/19) */
 .pin.pending{background:#1f6fe5;color:#fff}.pin.uploading,.pin.rating{background:var(--success)}.pin.incomplete{background:var(--danger);color:#fff}
 .pin.complete{background:#5d6478;color:#e6e8f0;opacity:.75}.pin.ship{opacity:.6}
-#redeem-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:950;max-width:calc(100% - 24px);width:380px;background:#fff4d6;color:#3d2a00;border:2px solid #f0a500;border-radius:12px;padding:10px 38px 10px 12px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:600 14px/1.35 var(--sans);display:none}
-#redeem-note b{display:block;font:700 15px var(--sans);margin-bottom:2px}
-#redeem-note button{position:absolute;right:6px;top:6px;border:0;background:transparent;font:700 18px var(--sans);color:#3d2a00;cursor:pointer}
-#sheet-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:949;max-width:calc(100% - 24px);width:340px;background:#dff7ea;color:#0d3b23;border:2px solid #2ecc8a;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:600 13.5px/1.35 var(--sans);display:none}
-#upd-note{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:960;max-width:calc(100% - 24px);width:360px;background:#1f6fe5;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:600 14px/1.35 var(--sans);display:none}
+#redeem-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:950;max-width:calc(100% - 24px);width:380px;background:#fff4d6;color:#3d2a00;border:2px solid #f0a500;border-radius:12px;padding:10px 38px 10px 12px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:600 var(--fs-md)/1.35 var(--sans);display:none}
+#redeem-note b{display:block;font:700 var(--fs-md) var(--sans);margin-bottom:2px}
+#redeem-note button{position:absolute;right:6px;top:6px;border:0;background:transparent;font:700 var(--fs-lg) var(--sans);color:#3d2a00;cursor:pointer}
+#sheet-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:949;max-width:calc(100% - 24px);width:340px;background:#dff7ea;color:#0d3b23;border:2px solid #2ecc8a;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:600 var(--fs-sm)/1.35 var(--sans);display:none}
+#upd-note{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:960;max-width:calc(100% - 24px);width:360px;background:#1f6fe5;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px rgba(0,0,0,.45);font:600 var(--fs-md)/1.35 var(--sans);display:none}
 .pin>span{display:inline-block;transform:rotate(45deg)}
 .pin.sel{transform:rotate(-45deg) scale(1.45);border:3px solid #fff;box-shadow:0 0 0 4px #111,0 2px 10px #000;z-index:1000}
 /* the parcel the CAMERA is on wears a GREEN ring (Dustin 10/11) */
@@ -316,7 +478,7 @@ html body #log #card .toprow .seqbig{white-space:nowrap;flex:none;font-size:19px
    closed: green, never red (red read as "something wrong" and the driver can't fix it — ours to handle).
    BEST NEXT = a white RING, not a white pin (white pins read like road shields, 10/11). */
 .pin.marked{background:#8e44ff;color:#fff}.pin.worked{background:var(--success)}
-.pin.marked>span::after{content:'✓';position:absolute;right:-9px;top:-9px;width:13px;height:13px;border-radius:50%;background:#fff;color:#8e44ff;font:700 11px/13px var(--font-display);text-align:center;box-shadow:0 0 0 1.5px #3b1a73}
+.pin.marked>span::after{content:'✓';position:absolute;right:-9px;top:-9px;width:13px;height:13px;border-radius:50%;background:#fff;color:#8e44ff;font:700 var(--fs-xs)/13px var(--sans);text-align:center;box-shadow:0 0 0 1.5px #3b1a73}
 .zlo .pin.marked>span::after{display:none}
 .dp .pin.next{border-style:solid;border-color:rgba(0,0,0,.65);box-shadow:0 0 0 4px #fff,0 0 0 6px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.6)}
 .dot.marked{background:#8e44ff}.dot.worked{background:var(--success)}
@@ -324,39 +486,39 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #dpring{position:fixed;z-index:5000;width:56px;height:56px;margin:-28px 0 0 -28px;pointer-events:none;display:none}
 #dpring circle{fill:none;stroke:#fff;stroke-width:5;stroke-dasharray:151;stroke-dashoffset:151;filter:drop-shadow(0 0 2px #000)}
 #dpring.go circle{stroke-dashoffset:0;transition:stroke-dashoffset .6s linear}
-#dp-end{position:absolute;z-index:800;right:12px;bottom:26px;width:40px;height:40px;border-radius:50%;border:1px solid #3a4260;background:rgba(21,26,38,.94);color:#fff;font-size:18px;line-height:38px;text-align:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.6);display:none;padding:0}
+#dp-end{position:absolute;z-index:800;right:12px;bottom:26px;width:40px;height:40px;border-radius:50%;border:1px solid #3a4260;background:rgba(21,26,38,.94);color:#fff;font-size:var(--fs-lg);line-height:38px;text-align:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.6);display:none;padding:0}
 .dp #dp-end{display:block}
-#dp-day{position:absolute;z-index:800;right:12px;width:40px;height:40px;border-radius:50%;border:1px solid #3a4260;background:rgba(21,26,38,.94);color:#fff;font-size:17px;line-height:38px;text-align:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.6);display:none;padding:0}
+#dp-day{position:absolute;z-index:800;right:12px;width:40px;height:40px;border-radius:50%;border:1px solid #3a4260;background:rgba(21,26,38,.94);color:#fff;font-size:var(--fs-lg);line-height:38px;text-align:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.6);display:none;padding:0}
 .dp #dp-day{display:block}#dp-day.on{background:#2b3c6b;border-color:#fff;box-shadow:0 0 0 3px #4f7cff}
-#dp-daycard{display:none;position:absolute;z-index:800;right:60px;max-width:300px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 11px;font:600 12.5px/1.45 var(--font-display);color:#d7dbe8}
+#dp-daycard{display:none;position:absolute;z-index:800;right:60px;max-width:300px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 11px;font:600 var(--fs-sm)/1.45 var(--sans);color:#d7dbe8}
 #dp-daycard b{color:#fff}#dp-daycard .m{color:var(--muted);font-weight:600}
 #dp-end.on{background:#2b3c6b;border-color:#fff;box-shadow:0 0 0 3px #4f7cff}
-#dp-chip{display:none;position:absolute;z-index:800;right:60px;bottom:26px;max-width:330px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 10px;font-size:12.5px;color:#e6e8f0}
+#dp-chip{display:none;position:absolute;z-index:800;right:60px;bottom:26px;max-width:330px;background:rgba(11,13,20,.95);border:1px solid #4f7cff;border-radius:10px;padding:8px 10px;font-size:var(--fs-sm);color:#e6e8f0}
 #dp-chip a{color:#8fb0ff;cursor:pointer;margin-left:8px;text-decoration:underline}
-#dp-chip input{flex:1;min-width:0;font:13px var(--font-display);padding:6px 8px;border-radius:7px;border:1px solid #3a4260;background:#0f1320;color:#fff}
+#dp-chip input{flex:1;min-width:0;font:var(--fs-sm) var(--sans);padding:6px 8px;border-radius:7px;border:1px solid #3a4260;background:#0f1320;color:#fff}
 /* SAME ADDRESS "+1" badge, BATCH/MULTI picks (glow) and MULTI tap order (number left of the pin) */
 .pin>span{position:relative}
-.pin .plus{position:absolute;left:calc(100% + 13px);top:50%;transform:translateY(-50%);font:700 13px/1 var(--font-display);padding:3px 6px;border-radius:10px;background:#fff;color:#0b0d14;border:2px solid #0b0d14;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6)}
-.zlo .pin .plus{font-size:11px;left:calc(100% + 6px)}
+.pin .plus{position:absolute;left:calc(100% + 13px);top:50%;transform:translateY(-50%);font:700 var(--fs-sm)/1 var(--sans);padding:3px 6px;border-radius:10px;background:#fff;color:#0b0d14;border:2px solid #0b0d14;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+.zlo .pin .plus{font-size:var(--fs-xs);left:calc(100% + 6px)}
 @keyframes pulse{0%{opacity:1;transform:scale(.8)}100%{opacity:0;transform:scale(1.5)}}
 .zlo .pin{width:12px;height:12px;margin:-12px 0 0 0;font-size:0;border-width:1.5px}
-.zlo .pin.sel{width:22px;height:22px;margin:-22px 0 0 0;font-size:11px}
+.zlo .pin.sel{width:22px;height:22px;margin:-22px 0 0 0;font-size:var(--fs-xs)}
 /* MID ZOOM (12–13): seq numbers stay readable from further away (Dustin 10/11) */
-.zmid .pin{width:23px;height:23px;margin:-23px 0 0 0;font-size:11px;border-width:1.5px}
-.zmid .pin.sel{width:28px;height:28px;margin:-28px 0 0 0;font-size:12px}
-.zmid .pin .plus{font-size:11px;left:calc(100% + 8px)}
+.zmid .pin{width:23px;height:23px;margin:-23px 0 0 0;font-size:var(--fs-xs);border-width:1.5px}
+.zmid .pin.sel{width:28px;height:28px;margin:-28px 0 0 0;font-size:var(--fs-sm)}
+.zmid .pin .plus{font-size:var(--fs-xs);left:calc(100% + 8px)}
 /* CLOSE IN (zoom 17+): the lot outline is the point — pins shrink so they stop covering it (Dustin 10/12) */
-.zclose .pin{width:29px;height:29px;margin:-29px 0 0 0;font-size:12px;border-width:2px}
-.zclose .pin.sel{width:31px;height:31px;margin:-31px 0 0 0;font-size:13px;transform:rotate(-45deg) scale(1.4)}
+.zclose .pin{width:29px;height:29px;margin:-29px 0 0 0;font-size:var(--fs-sm);border-width:2px}
+.zclose .pin.sel{width:31px;height:31px;margin:-31px 0 0 0;font-size:var(--fs-sm);transform:rotate(-45deg) scale(1.4)}
 .zclose .pin.cam::after{inset:-8px;border-width:3px}
-.zclose .pin .plus{font-size:11px;left:calc(100% + 7px);padding:1px 5px}
+.zclose .pin .plus{font-size:var(--fs-xs);left:calc(100% + 7px);padding:1px 5px}
 /* STACKED SPOT (desk-p52, MT 10/28 + RF 10/25): parcels on top of each other = ONE pin + a count badge (same white pill
    as the old "+1"); a tap opens the list of every seq there. Nothing here changes the zoom. */
 .pin .plus.stk{min-width:12px;text-align:center}
-#stklist{position:fixed;z-index:1200;display:none;width:300px;max-width:calc(100vw - 16px);background:rgba(11,13,20,.97);color:#e6e8f0;border:1.5px solid #fff;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.7);font:600 13px/1.3 var(--font-display);overflow:hidden}
-#stklist .stk-h{display:flex;align-items:center;gap:8px;padding:8px 8px 7px 11px;border-bottom:1px solid #2c3350;font:600 14px var(--font-display);color:#fff}
+#stklist{position:fixed;z-index:1200;display:none;width:300px;max-width:calc(100vw - 16px);background:rgba(11,13,20,.97);color:#e6e8f0;border:1.5px solid #fff;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.7);font:600 var(--fs-sm)/1.3 var(--sans);overflow:hidden}
+#stklist .stk-h{display:flex;align-items:center;gap:8px;padding:8px 8px 7px 11px;border-bottom:1px solid #2c3350;font:600 var(--fs-md) var(--sans);color:#fff}
 #stklist .stk-h span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#stklist .stk-x{border:0;background:transparent;color:#fff;font:700 18px/1 var(--sans);width:34px;height:30px;border-radius:7px;cursor:pointer;flex:0 0 auto}
+#stklist .stk-x{border:0;background:transparent;color:#fff;font:700 var(--fs-lg)/1 var(--sans);width:34px;height:30px;border-radius:7px;cursor:pointer;flex:0 0 auto}
 #stklist .stk-x:hover{background:#1c2236}
 #stklist .stk-b{overflow-y:auto;overscroll-behavior:contain}
 #stklist .stk-row{display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid #1c2236;cursor:pointer;min-height:40px;touch-action:manipulation}
@@ -365,13 +527,13 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #stklist .stk-row.on{background:#1d2a4d}
 #stklist .stk-row.done{opacity:.62}
 #stklist .stk-row.off{cursor:default;opacity:.5}
-#stklist .stk-seq{flex:0 0 auto;min-width:46px;text-align:center;padding:4px 7px;border-radius:8px;font:700 15px/1 var(--font-display);background:#1f6fe5;color:#fff;border:2px solid rgba(0,0,0,.6)}
+#stklist .stk-seq{flex:0 0 auto;min-width:46px;text-align:center;padding:4px 7px;border-radius:8px;font:700 var(--fs-md)/1 var(--sans);background:#1f6fe5;color:#fff;border:2px solid rgba(0,0,0,.6)}
 #stklist .stk-seq.uploading,#stklist .stk-seq.rating,#stklist .stk-seq.worked{background:var(--success);color:#0b0d14}
 #stklist .stk-seq.incomplete{background:var(--danger)}#stklist .stk-seq.marked{background:#8e44ff}
 #stklist .stk-seq.complete,#stklist .stk-seq.earlier,#stklist .stk-seq.redeemed{background:#5d6478;color:#e6e8f0}
 #stklist .stk-t{flex:1;min-width:0}
-#stklist .stk-a{font:600 14px/1.25 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#stklist .stk-s{font:600 12px/1.25 var(--font-display);color:#aab1c7}
+#stklist .stk-a{font:600 var(--fs-md)/1.25 var(--sans);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stklist .stk-s{font:600 var(--fs-sm)/1.25 var(--sans);color:#aab1c7}
 @media (any-pointer:coarse){ #stklist .stk-row{min-height:46px} }
 /* GPS = a big BRIGHT ORANGE navigation arrow with a white outline and a pulsing ring
    (Dustin 2026-10-11: "more colorful and obvious"; parcels are BLUE, as in Maptitude,
@@ -382,77 +544,77 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 @keyframes mepulse{0%{transform:scale(.55);opacity:1}100%{transform:scale(1.25);opacity:0}}
 .me svg{position:absolute;left:-23px;top:-23px;width:46px;height:46px;filter:drop-shadow(0 1px 5px #000)}
 .me .stop{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;background:#ff6a00;border:4px solid #fff;box-shadow:0 1px 6px #000}
-.leaflet-container{font-family:inherit;background:#121520}
+.leaflet-container{font-family:var(--sans);background:#121520}
 .leaflet-control-attribution{background:rgba(15,17,23,.75)!important;color:#8b8fa8!important}
 .leaflet-control-attribution a{color:#9db5ff!important}
 .leaflet-bar a{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}
 
 .hud{position:absolute;z-index:500;background:rgba(17,19,28,.93);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.5)}
 #nav{top:12px;left:56px;right:330px;display:flex;align-items:center;gap:14px;padding:10px 14px;min-height:64px}
-#nav .arrow{width:46px;height:46px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--surface2);font-size:28px;transition:transform .4s}
-#nav .t1{font:700 20px var(--font-display)}#nav .t2{color:#c3c7da;font-size:14px}
-#nav .dist{font:700 26px var(--font-display);margin-left:auto;text-align:right;white-space:nowrap}
-#nav .dist small{display:block;font:600 12px var(--font-display);color:var(--muted)}
-#pos{left:12px;bottom:26px;width:306px;padding:10px 12px;font-size:13px}
-#pos .h{display:flex;align-items:center;gap:8px;font:600 14px var(--font-display)}
+#nav .arrow{width:46px;height:46px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--surface2);font-size:var(--fs-hero);transition:transform .4s}
+#nav .t1{font:700 var(--fs-lg) var(--sans)}#nav .t2{color:#c3c7da;font-size:var(--fs-md)}
+#nav .dist{font:700 var(--fs-xl) var(--sans);margin-left:auto;text-align:right;white-space:nowrap}
+#nav .dist small{display:block;font:600 var(--fs-sm) var(--sans);color:var(--muted)}
+#pos{left:12px;bottom:26px;width:306px;padding:10px 12px;font-size:var(--fs-sm)}
+#pos .h{display:flex;align-items:center;gap:8px;font:600 var(--fs-md) var(--sans)}
 #pos .l2{color:var(--muted);margin-top:4px;line-height:1.35}
 #pos .btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.sbtn{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font:600 12.5px var(--font-display)}
+.sbtn{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font:600 var(--fs-sm) var(--sans)}
 .kdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #0006}
 .sbtn:hover{border-color:#5b6280}.sbtn.on{border-color:var(--accent);color:#cdd9ff}
-#tilebar{right:12px;bottom:26px;padding:8px 10px;font-size:13px;max-width:306px;display:flex;flex-direction:column;gap:6px}
+#tilebar{right:12px;bottom:26px;padding:8px 10px;font-size:var(--fs-sm);max-width:306px;display:flex;flex-direction:column;gap:6px}
 #tilebar .row2{display:flex;gap:6px;align-items:center;flex-wrap:wrap}#tilebar .row2:first-of-type{padding-right:30px}   /* room for the panel's minimize button */
-#nogrid{position:absolute;z-index:450;left:50%;top:128px;transform:translateX(-50%);background:#3a2a12;color:#ffd08a;padding:6px 12px;border-radius:20px;font:600 13px var(--font-display);display:none}
+#nogrid{position:absolute;z-index:450;left:50%;top:128px;transform:translateX(-50%);background:#3a2a12;color:#ffd08a;padding:6px 12px;border-radius:20px;font:600 var(--fs-sm) var(--sans);display:none}
 
 /* overlays */
 #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#22263a;border:1px solid var(--border2);color:var(--text);
-  padding:10px 16px;border-radius:12px;font:600 15px var(--font-display);z-index:3000;display:none;max-width:70vw;box-shadow:0 8px 30px #000}
+  padding:10px 16px;border-radius:12px;font:600 var(--fs-md) var(--sans);z-index:3000;display:none;max-width:70vw;box-shadow:0 8px 30px #000}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2500;display:none;align-items:center;justify-content:center}
 .modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:22px;max-width:520px;width:92%;box-shadow:0 20px 60px #000}
-.modal h2{font:600 24px var(--serif);font-variant-numeric:lining-nums;margin-bottom:10px}
-.modal p{white-space:pre-wrap;line-height:1.45;color:#d0d4e4;font-size:15px}
+.modal h2{font:600 var(--fs-lg) var(--sans);text-transform:uppercase;letter-spacing:.6px;font-variant-numeric:tabular-nums;margin-bottom:10px}
+.modal p{white-space:pre-wrap;line-height:1.45;color:#d0d4e4;font-size:var(--fs-md)}
 .modal .mb{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
-.btn{border:0;border-radius:10px;padding:10px 16px;font:600 15px var(--font-display)}
+.btn{border:0;border-radius:10px;padding:10px 16px;font:600 var(--fs-md) var(--sans)}
 .btn.p{background:var(--accent);color:#fff}.btn.g{background:var(--surface2);border:1px solid var(--border2)}.btn.ok{background:var(--success);color:#08130c}
-.modal input{width:100%;margin-top:6px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 16px var(--font-display);padding:9px 10px}
-.modal label{display:block;margin-top:12px;font-size:13px;color:var(--muted)}
-#help table{width:100%;border-collapse:collapse;font-size:14px}
+.modal input{width:100%;margin-top:6px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-md) var(--sans);padding:9px 10px}
+.modal label{display:block;margin-top:12px;font-size:var(--fs-sm);color:var(--muted)}
+#help table{width:100%;border-collapse:collapse;font-size:var(--fs-md)}
 #help td{padding:5px 4px;border-bottom:1px solid var(--border)}
 #help td:first-child{white-space:nowrap;width:120px}
 #start{position:fixed;inset:0;z-index:2000;background:var(--bg);display:none;align-items:center;justify-content:center}
 #start .box{max-width:560px;width:92%;background:var(--surface);border:1px solid var(--border2);border-radius:18px;padding:26px}
-#start h1{font:700 26px var(--font-display);margin-bottom:6px}
+#start h1{font:700 var(--fs-xl) var(--sans);margin-bottom:6px}
 #start p{color:#c3c7da;line-height:1.45;margin:8px 0}
 #start .btn{margin-top:10px;width:100%;padding:13px}
-#start .hint{font-size:13px;color:var(--muted)}
-#prog{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px}
+#start .hint{font-size:var(--fs-sm);color:var(--muted)}
+#prog{font-size:var(--fs-sm);color:var(--muted);margin-top:8px;min-height:18px}
 
-.multi{display:inline-block;margin-top:5px;font:700 13px var(--font-display);letter-spacing:.4px;padding:3px 9px;border-radius:7px;background:#3b2a12;color:#ffc46b;border:1.5px solid #c98a2a}
+.multi{display:inline-block;margin-top:5px;font:700 var(--fs-sm) var(--sans);letter-spacing:.4px;padding:3px 9px;border-radius:7px;background:#3b2a12;color:#ffc46b;border:1.5px solid #c98a2a}
 .multi-t{color:#ffc46b}
-.warnchip{margin-top:5px;font:600 12px/1.3 var(--font-display);padding:4px 8px;border-radius:7px;background:#3a1d12;color:#ffb38a;border:1px solid #a8552c}
+.warnchip{margin-top:5px;font:600 var(--fs-sm)/1.3 var(--sans);padding:4px 8px;border-radius:7px;background:#3a1d12;color:#ffb38a;border:1px solid #a8552c}
 .details{padding:6px 0 4px;border-bottom:1px solid var(--border)}
-.facts{font-size:13px;color:#c9cee0}.facts b{color:#fff}
-.owner{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.facts{font-size:var(--fs-sm);color:#c9cee0}.facts b{color:#fff}
+.owner{font-size:var(--fs-sm);color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
 .pmap{color:#9db5ff}
 /* ── NARROW LOG PANE (container query; the pane can be as narrow as 290px) ── */
 @container log (max-width: 520px) {
   .stats{grid-template-columns:repeat(3,1fr)}
-  .stat .n{font-size:20px}
-  .stat .l{font-size:11px}
+  .stat .n{font-size:var(--fs-lg)}
+  .stat .l{font-size:var(--fs-xs)}
 }
 @container log (max-width: 400px) {
   .brand small{display:none}
   .gate{flex-direction:column;gap:5px}
-  #allclear{font-size:12px;padding:6px 9px}
-  #ship-btn{padding:7px 0;width:100%;font-size:16px}
+  #allclear{font-size:var(--fs-sm);padding:6px 9px}
+  #ship-btn{padding:7px 0;width:100%;font-size:var(--fs-md)}
   .act kbd{display:none}
 }
 /* ── WHERE TO GO: the NEXT parcel's address, big (log pane + fixed map banner) ── */
 #nextbar{margin:8px 12px 0;padding:8px 12px;border-radius:var(--radius-sm);background:#10233a;border:1.5px solid #2f6db3;cursor:pointer;flex:0 0 auto}
 #nextbar:hover{border-color:#5da0ff}
-#nextbar .k{font:600 11px var(--font-display);letter-spacing:.6px;color:#8fc0ff;text-transform:uppercase}
-#nextbar .st{font:700 21px/1.15 var(--font-display);color:#fff;margin-top:1px;overflow-wrap:anywhere}
-#nextbar .ct{font:600 14px var(--font-display);color:#c4d6ee}
+#nextbar .k{font:600 var(--fs-xs) var(--sans);letter-spacing:.6px;color:#8fc0ff;text-transform:uppercase}
+#nextbar .st{font:700 var(--fs-xl)/1.15 var(--sans);color:#fff;margin-top:1px;overflow-wrap:anywhere}
+#nextbar .ct{font:600 var(--fs-md) var(--sans);color:#c4d6ee}
 /* TOP ADDRESS CHIPS (Dustin 2026-10-11: "too big ... dont need to take up so much space,
    it should probably show the next closest seq numbers"). Compact floating chips: the
    camera's parcel, then the CLOSEST not-taken parcels to the GPS dot (the map centre
@@ -462,31 +624,31 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #addrbanner .blk:hover{background:rgba(255,255,255,.08)}
 #addrbanner .blk.near{background:rgba(31,111,229,.20);border:1.5px solid #2f6db3}
 #addrbanner .blk.cam{background:rgba(12,26,52,.95);border:2px solid #2ecc8a;box-shadow:0 0 0 2px rgba(46,204,138,.35),0 3px 12px rgba(0,0,0,.55)}   /* same chip as the others; the GREEN RING says: the camera's live seq */
-#addrbanner .lbl{flex:none;font:600 11px var(--font-display);letter-spacing:.6px;text-transform:uppercase;color:#8fc0ff;align-self:center}
-#addrbanner .k{flex:none;font:700 13px var(--font-display);color:#8fc0ff}
+#addrbanner .lbl{flex:none;font:600 var(--fs-xs) var(--sans);letter-spacing:.6px;text-transform:uppercase;color:#8fc0ff;align-self:center}
+#addrbanner .k{flex:none;font:700 var(--fs-sm) var(--sans);color:#8fc0ff}
 #addrbanner .cam .k{color:#8fc0ff}
-#addrbanner .st{font:600 15px/1.15 var(--font-display);color:#fff;overflow:hidden;text-overflow:ellipsis}
-#addrbanner .ct{flex:none;font:600 12px var(--font-display);color:#aeb6cc}
+#addrbanner .st{font:600 var(--fs-md)/1.15 var(--sans);color:#fff;overflow:hidden;text-overflow:ellipsis}
+#addrbanner .ct{flex:none;font:600 var(--fs-sm) var(--sans);color:#aeb6cc}
 #addrbanner .cam .ct{display:none}   /* the camera chip: seq + street only */
 /* 10/18: the active parcel is the ONLY chip now, centred and a little bigger */
 #addrbanner .blk.cam{padding:7px 16px;gap:10px}
-#addrbanner .cam .k{font-size:18px}
-#addrbanner .cam .st{font-size:21px}
+#addrbanner .cam .k{font-size:var(--fs-lg)}
+#addrbanner .cam .st{font-size:var(--fs-xl)}
 #addrbanner .cam .camico{width:24px;height:24px}
 #addrbanner .blk.cam.sel{border-color:#4f7cff;box-shadow:0 3px 12px rgba(0,0,0,.55)}   /* selected, not the camera's: blue ring, no green */
-.leaflet-tooltip.plabel{background:#0d0f16;color:#fff;border:1.5px solid #fff;border-radius:7px;font:600 14px var(--font-display);padding:3px 8px;box-shadow:0 2px 8px #000}
+.leaflet-tooltip.plabel{background:#0d0f16;color:#fff;border:1.5px solid #fff;border-radius:7px;font:600 var(--fs-md) var(--sans);padding:3px 8px;box-shadow:0 2px 8px #000}
 .leaflet-tooltip.plabel.sel{border-color:#4f7cff}.leaflet-tooltip.plabel.cam{border-color:#2ecc8a}.leaflet-tooltip.plabel.next{border-color:#5da0ff;border-style:dashed}
 .leaflet-tooltip-top.plabel:before{border-top-color:#fff}
-#strip .s-addr{font:600 11px/1.2 var(--font-display);color:#fff;overflow-wrap:anywhere;width:100%;padding:4px 2px;border-radius:6px;background:#10233a;border:1px solid #2f6db3}
+#strip .s-addr{font:600 var(--fs-xs)/1.2 var(--sans);color:#fff;overflow-wrap:anywhere;width:100%;padding:4px 2px;border-radius:6px;background:#10233a;border:1px solid #2f6db3}
 #strip .s-addr.cam{background:#2a1428;border-color:#8a3a7e}
-#strip .s-addr i{display:block;font-style:normal;font-size:11px;color:#8fc0ff;letter-spacing:.4px}
+#strip .s-addr i{display:block;font-style:normal;font-size:var(--fs-xs);color:#8fc0ff;letter-spacing:.4px}
 #strip .s-addr.cam i{color:#ff9be9}
 
 /* ── AERIAL: opened ONLY from the field card (button or A) — full-height overlay ── */
 #card .cardhead{display:flex;gap:10px;align-items:flex-start}
 #card .cardtxt{flex:1;min-width:0}
 .seqtop{flex-wrap:wrap;justify-content:space-between;row-gap:6px}
-.aerbtn{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;border:1.5px solid var(--border2);background:var(--surface2);font:600 13px var(--font-display);color:#d6dae8;cursor:zoom-in}
+.aerbtn{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;border:1.5px solid var(--border2);background:var(--surface2);font:600 var(--fs-sm) var(--sans);color:#d6dae8;cursor:zoom-in}
 .aerbtn:hover{border-color:var(--accent);color:#fff}
 .cardbtns{display:inline-flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .rtbtn{border-color:#2f6db3;background:#10233a;color:#cfe2ff;cursor:pointer}
@@ -494,23 +656,23 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 .rtbtn[disabled]{opacity:.45;cursor:not-allowed}
 #aerover{position:fixed;inset:0;z-index:2400;background:rgba(5,6,10,.97);display:none;flex-direction:column;align-items:center;justify-content:center;cursor:zoom-out}
 #aerover.on{display:flex}
-#aerover .cap{color:#e8ebf5;font:600 18px var(--font-display);padding:10px 16px 8px;text-align:center}
-#aerover .cap small{display:block;color:var(--muted);font:600 13px var(--font-display);margin-top:3px}
+#aerover .cap{color:#e8ebf5;font:600 var(--fs-lg) var(--sans);padding:10px 16px 8px;text-align:center}
+#aerover .cap small{display:block;color:var(--muted);font:600 var(--fs-sm) var(--sans);margin-top:3px}
 #aerover img{display:block;height:calc(100vh - 90px);max-width:96vw;object-fit:contain;border-radius:6px;box-shadow:0 10px 40px #000}
-#aerover .none{color:var(--muted);font:600 16px var(--font-display);padding:40px}
+#aerover .none{color:var(--muted);font:600 var(--fs-md) var(--sans);padding:40px}
 
 /* ── PANE LAYOUT: split · log minimized (strip) · log full · map full ───────── */
 .winbtns{display:flex;gap:4px}
-.wbtn{width:28px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);font:700 14px/1 var(--font-display);display:flex;align-items:center;justify-content:center;padding:0;color:#cfd3e6}
+.wbtn{width:28px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);font:700 var(--fs-md)/1 var(--sans);display:flex;align-items:center;justify-content:center;padding:0;color:#cfd3e6}
 .wbtn:hover{border-color:var(--accent);color:#fff}
 #strip{display:none;flex-direction:column;align-items:center;gap:10px;padding:10px 4px;height:100vh;cursor:pointer;background:var(--surface);text-align:center;overflow:hidden}
 #strip:hover{background:var(--surface2)}
-#strip .s-open{font:700 20px var(--font-display);color:#cfd3e6}
-#strip .s-seq{font:600 11px var(--font-display);color:var(--muted);line-height:1.2}
-#strip .s-seq b{display:block;font:700 20px var(--font-display);color:var(--text)}
-#strip .s-n{font:700 18px var(--font-display);line-height:1}
-#strip .s-l{font:600 11px var(--font-display);color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
-#strip .s-link{font:600 11px var(--font-display);border-radius:8px;padding:4px 3px;width:100%}
+#strip .s-open{font:700 var(--fs-lg) var(--sans);color:#cfd3e6}
+#strip .s-seq{font:600 var(--fs-xs) var(--sans);color:var(--muted);line-height:1.2}
+#strip .s-seq b{display:block;font:700 var(--fs-lg) var(--sans);color:var(--text)}
+#strip .s-n{font:700 var(--fs-lg) var(--sans);line-height:1}
+#strip .s-l{font:600 var(--fs-xs) var(--sans);color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+#strip .s-link{font:600 var(--fs-xs) var(--sans);border-radius:8px;padding:4px 3px;width:100%}
 #desk.logmin{grid-template-columns:76px 0 1fr}
 #desk.logmin #log > :not(#strip){display:none}
 #desk.logmin #strip{display:flex}
@@ -526,62 +688,62 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #desk.mapmax #log{visibility:hidden;border:0}
 #desk:not(.split) #splitter{visibility:hidden;pointer-events:none}
 #mapbtns{position:absolute;z-index:520;left:10px;top:84px;display:flex;flex-direction:column;gap:6px}
-#mapbtns .wbtn{width:34px;height:34px;font-size:16px;background:rgba(17,19,28,.93);box-shadow:0 2px 8px rgba(0,0,0,.5)}
-#mapbtns .wtxt{font:600 11px var(--font-display);width:auto;padding:0 8px;height:30px}
+#mapbtns .wbtn{width:34px;height:34px;font-size:var(--fs-md);background:rgba(17,19,28,.93);box-shadow:0 2px 8px rgba(0,0,0,.5)}
+#mapbtns .wtxt{font:600 var(--fs-xs) var(--sans);width:auto;padding:0 8px;height:30px}
 
 /* ── FLOATING MAP PANELS: each one minimizes to a small tab ─────────────────── */
 .hud{padding-right:34px}
-.hud .hmin{position:absolute;top:6px;right:6px;width:24px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);font:700 13px/1 var(--font-display);color:#cfd3e6;display:flex;align-items:center;justify-content:center;padding:0;z-index:2}
+.hud .hmin{position:absolute;top:6px;right:6px;width:24px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);font:700 var(--fs-sm)/1 var(--sans);color:#cfd3e6;display:flex;align-items:center;justify-content:center;padding:0;z-index:2}
 .hud .hmin:hover{border-color:var(--accent);color:#fff}
 .hud .htab{display:none}
 .hud.min{width:auto !important;min-height:0 !important;padding:0 !important}
 .hud.min > :not(.htab){display:none !important}
-.hud.min .htab{display:block;padding:7px 12px;font:600 13px var(--font-display);cursor:pointer;white-space:nowrap;color:#cfd3e6}
+.hud.min .htab{display:block;padding:7px 12px;font:600 var(--fs-sm) var(--sans);cursor:pointer;white-space:nowrap;color:#cfd3e6}
 .hud.min .htab:hover{color:#fff}
 #nav.min{right:auto}
 /* ── SHORT SCREENS (1366x768 laptops, small windows): tighter, list stays in view; the log pane scrolls as a last resort ── */
 @media (max-height:780px){
   .topbar{padding:6px 10px}
-  .title{padding:4px 12px 0} .title .sub{display:none} .title h1{font-size:18px}
-  .stats{padding:5px 10px} .stat{padding:3px 2px} .stat .n{font-size:18px}
-  #allclear{padding:6px 9px} #ship-btn{font-size:16px}
-  #nextbar{padding:6px 10px;margin-top:6px} #nextbar .st{font-size:19px}
-  #card{padding:8px 10px;min-height:190px;margin-top:6px} #card .seqbig{font-size:26px} #card .addr{font-size:19px}
+  .title{padding:4px 12px 0} .title .sub{display:none} .title h1{font-size:var(--fs-lg)}
+  .stats{padding:5px 10px} .stat{padding:3px 2px} .stat .n{font-size:var(--fs-lg)}
+  #allclear{padding:6px 9px} #ship-btn{font-size:var(--fs-md)}
+  #nextbar{padding:6px 10px;margin-top:6px} #nextbar .st{font-size:var(--fs-lg)}
+  #card{padding:8px 10px;min-height:190px;margin-top:6px} #card .seqbig{font-size:var(--fs-xl)} #card .addr{font-size:var(--fs-lg)}
   .search{padding:6px 12px 4px}
   #list{min-height:80px}
-  .pill{padding:3px 8px;font-size:12px}
+  .pill{padding:3px 8px;font-size:var(--fs-sm)}
 }
 
 /* ── COMPACT FIELD LOG (Dustin 2026-10-11): the whole left pane fits with no scrolling
    (only the parcel list scrolls), clean, one consistent left edge; button rows line up. ── */
 #log .topbar{padding:6px 12px;row-gap:4px}
-#log .topbar .pill{font-size:11px;padding:2px 8px}
+#log .topbar .pill{font-size:var(--fs-xs);padding:2px 8px}
 #log .title{padding:5px 12px 0}
-#log .title h1{font-size:17px}
+#log .title h1{font-size:var(--fs-lg)}
 #log .stats{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:4px;padding:6px 12px}
 #log .stat{padding:4px 1px;min-height:0}
-#log .stat .n{font-size:16px}
-#log .stat .l{font-size:11px;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#log .stat .n{font-size:var(--fs-md)}
+#log .stat .l{font-size:var(--fs-xs);letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #log .gate{margin:0 12px;flex-direction:row!important;align-items:stretch;gap:6px}
-#log #allclear{font-size:12px;padding:6px 9px;line-height:1.2}
-#log #ship-btn{font-size:14px;padding:0 16px;min-height:36px;width:auto!important}
+#log #allclear{font-size:var(--fs-sm);padding:6px 9px;line-height:1.2}
+#log #ship-btn{font-size:var(--fs-md);padding:0 16px;min-height:36px;width:auto!important}
 #log #nextbar{display:none!important}
 #log #card{margin:6px 12px 0;padding:8px 10px;min-height:0!important}
 #log #card .seqtop{flex-wrap:wrap;gap:6px;align-items:center}
-#log #card .seqbig{font-size:22px;margin-right:2px}
-#log #card .addr{font-size:17px;margin-top:3px}
-#log #card .city{font-size:12.5px}
-#log #card .pid{font-size:13px}
+#log #card .seqbig{font-size:var(--fs-xl);margin-right:2px}
+#log #card .addr{font-size:var(--fs-lg);margin-top:3px}
+#log #card .city{font-size:var(--fs-sm)}
+#log #card .pid{font-size:var(--fs-sm)}
 #log .navbtns,#log .acts{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px;margin-top:6px}
-#log .navbtns .aerbtn,#log .acts .act{width:100%;min-width:0;min-height:38px;justify-content:center;align-items:center;padding:5px 4px;font:600 12px var(--font-display);flex-direction:row;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#log .navbtns .aerbtn,#log .acts .act{width:100%;min-width:0;min-height:38px;justify-content:center;align-items:center;padding:5px 4px;font:600 var(--fs-sm) var(--sans);flex-direction:row;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #log .navbtns kbd,#log .acts kbd{display:none}
 #log .search{padding:6px 12px 4px;flex-wrap:nowrap}
 #log .foot{padding:4px 12px}
-#log #card .pid{white-space:normal;overflow-wrap:anywhere;font-size:13px}   /* parcel id + land use: wraps, never cut off (10/21) */
+#log #card .pid{white-space:normal;overflow-wrap:anywhere;font-size:var(--fs-sm)}   /* parcel id + land use: wraps, never cut off (10/21) */
 #log #allclear{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-#log #card .details{display:flex;flex-wrap:wrap;gap:1px 8px;font-size:13px;margin-top:4px}
+#log #card .details{display:flex;flex-wrap:wrap;gap:1px 8px;font-size:var(--fs-sm);margin-top:4px}
 #log #card .details > div{margin:0}
-#log #card .ai{margin-top:6px;padding-top:4px;font-size:12px}
+#log #card .ai{margin-top:6px;padding-top:4px;font-size:var(--fs-sm)}
 #log #card .ai > *{margin-top:2px}
 @media (any-pointer:coarse){ html body #log .navbtns .aerbtn,html body #log .acts .act{min-height:44px} html body #log .stat{min-height:0} }
 
@@ -601,7 +763,7 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #aerover.on{display:flex}
 #aerover.big{width:min(72%,880px);height:calc(100% - 140px)}
 #aerover .aerbar{display:flex;align-items:center;gap:6px;padding:6px 6px 4px 10px}
-#aerover .aerbar .cap{flex:1;min-width:0;padding:0!important;text-align:left!important;font:600 13px var(--font-display)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#aerover .aerbar .cap{flex:1;min-width:0;padding:0!important;text-align:left!important;font:600 var(--fs-sm) var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #aerover .aerbar .cap small{display:none}
 #aerover .aerbar .wbtn{flex:none;min-width:34px;min-height:30px}
 #aerover-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 6px 6px}
@@ -620,15 +782,15 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 #addrbanner .ab-body{justify-content:center;padding:6px 8px}
 /* the route box squeezed beside the centred address chip (10/19): smaller type, same order */
 #route-slot.rt-tight{padding:8px 30px 8px 10px}
-#route-slot.rt-tight .rt-k{font-size:11px;gap:5px;letter-spacing:.3px;flex-wrap:nowrap;white-space:nowrap}
-#route-slot.rt-tight .rt-k .rt-stop{font-size:12px;padding:3px 7px;margin-right:18px}
-#route-slot.rt-tight .rt-st{font-size:18px;margin-top:2px}
-#route-slot.rt-tight .rt-ct{font-size:12px}
+#route-slot.rt-tight .rt-k{font-size:var(--fs-xs);gap:5px;letter-spacing:.3px;flex-wrap:nowrap;white-space:nowrap}
+#route-slot.rt-tight .rt-k .rt-stop{font-size:var(--fs-sm);padding:3px 7px;margin-right:18px}
+#route-slot.rt-tight .rt-st{font-size:var(--fs-lg);margin-top:2px}
+#route-slot.rt-tight .rt-ct{font-size:var(--fs-sm)}
 #route-slot.rt-tight .rt-d{gap:8px;margin-top:4px}
-#route-slot.rt-tight .rt-d .d{font-size:19px}#route-slot.rt-tight .rt-d .t{font-size:17px}#route-slot.rt-tight .rt-d .s{font-size:11px}
-#route-slot.rt-tight .rt-turn{font-size:15px;margin-top:4px}
-#route-slot.rt-tight .rt-mv .rt-ic{width:36px;height:36px;padding:3px}#route-slot.rt-tight .rt-mv{gap:8px;margin-top:4px}#route-slot.rt-tight .rt-then{font-size:12px;gap:5px;margin-top:4px;padding-top:4px}#route-slot.rt-tight .rt-then .rt-ic2{width:20px;height:20px}
-#route-slot.rt-tight .rt-n{font-size:11px;margin-top:2px}
+#route-slot.rt-tight .rt-d .d{font-size:var(--fs-lg)}#route-slot.rt-tight .rt-d .t{font-size:var(--fs-lg)}#route-slot.rt-tight .rt-d .s{font-size:var(--fs-xs)}
+#route-slot.rt-tight .rt-turn{font-size:var(--fs-md);margin-top:4px}
+#route-slot.rt-tight .rt-mv .rt-ic{width:36px;height:36px;padding:3px}#route-slot.rt-tight .rt-mv{gap:8px;margin-top:4px}#route-slot.rt-tight .rt-then{font-size:var(--fs-sm);gap:5px;margin-top:4px;padding-top:4px}#route-slot.rt-tight .rt-then .rt-ic2{width:20px;height:20px}
+#route-slot.rt-tight .rt-n{font-size:var(--fs-xs);margin-top:2px}
 #addrbanner{top:4px!important}
 /* the CAMERA's live chip: a bold green ring, the camera icon bigger and centred top-to-bottom (Dustin 10/11) */
 #addrbanner .blk.cam{align-items:center;border:3px solid #2ecc8a!important;box-shadow:0 0 0 3px rgba(46,204,138,.45),0 0 16px 4px rgba(46,204,138,.55),0 3px 12px rgba(0,0,0,.55)!important}
@@ -637,43 +799,43 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 
 /* card buttons smaller (Dustin 10/11: "too big, plenty big enough for me to press them") */
 #log .navbtns,#log .acts{gap:4px!important;margin-top:5px!important}
-html body #log .navbtns .aerbtn,html body #log .acts .act{min-height:30px!important;padding:3px 4px!important;font-size:11.5px!important;border-radius:8px!important}
+html body #log .navbtns .aerbtn,html body #log .acts .act{min-height:30px!important;padding:3px 4px!important;font-size:var(--fs-xs)!important;border-radius:8px!important}
 @media (any-pointer:coarse){ html body #log .navbtns .aerbtn,html body #log .acts .act{min-height:34px!important} }
 
 /* Aerial last and alone; Camera + Route are parcel actions (Dustin 10/11) */
 #log .navbtns{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 #log .aerrow{display:grid;grid-template-columns:1fr;margin-top:4px}
-html body #log .aerrow .aerbtn{width:100%;justify-content:center;min-height:30px;padding:3px 4px;font:600 11.5px var(--font-display);border-radius:8px}
+html body #log .aerrow .aerbtn{width:100%;justify-content:center;min-height:30px;padding:3px 4px;font:600 var(--fs-xs) var(--sans);border-radius:8px}
 #log .aerrow kbd{display:none}
 @media (any-pointer:coarse){ html body #log .aerrow .aerbtn{min-height:34px} }
 
 /* compact list rows, so more parcels fit on screen (Dustin 10/11) */
 html body #list .row{padding:3px 8px;gap:8px;border-radius:7px;min-height:0}
-html body #list .row .s{font-size:14px;min-width:40px}
-html body #list .row .a b{font-size:13px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html body #list .row .s{font-size:var(--fs-md);min-width:40px}
+html body #list .row .a b{font-size:var(--fs-sm);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 html body #list .row .a{display:flex;align-items:baseline;gap:6px;min-width:0;white-space:nowrap;overflow:hidden}
 html body #list .row .a b{display:inline;flex:0 1 auto;min-width:0}
-html body #list .row .a span{font-size:11px;flex:none}   /* one line per parcel */
-html body #list .row .ai2{font-size:11.5px}
+html body #list .row .a span{font-size:var(--fs-xs);flex:none}   /* one line per parcel */
+html body #list .row .ai2{font-size:var(--fs-xs)}
 @media (any-pointer:coarse){ html body #list .row{min-height:36px} }
 
 /* Aerial sits in the empty space right of the address (Dustin 10/11) */
-html body #log #card .aerfloat{float:right;margin:4px 0 2px 8px;min-height:30px;padding:3px 10px;font:600 11.5px var(--font-display);border-radius:8px}
+html body #log #card .aerfloat{float:right;margin:4px 0 2px 8px;min-height:30px;padding:3px 10px;font:600 var(--fs-xs) var(--sans);border-radius:8px}
 #log #card .aerfloat kbd{display:none}
 #log #card .pid{clear:right}
 
 /* SLIMMER TOP (Dustin 10/11): county + counters one thin strip, SHIP a thin line, so the
    property characteristics show without scrolling. Only the parcel list scrolls. */
 html body #log .title{padding:4px 12px 0}
-html body #log .title h1{font-size:14px;line-height:1.2}
+html body #log .title h1{font-size:var(--fs-md);line-height:1.2}
 html body #log .title .sub{display:none}
 html body #log .stats{display:flex!important;flex-wrap:nowrap;gap:3px;padding:4px 12px}
 html body #log .stat{flex:1 1 0;min-width:0;display:flex;align-items:baseline;justify-content:center;gap:3px;padding:2px 3px;min-height:0!important;border-radius:6px}
-html body #log .stat .n{font-size:13px;line-height:1.2}
-html body #log .stat .l{font-size:11px}
+html body #log .stat .n{font-size:var(--fs-sm);line-height:1.2}
+html body #log .stat .l{font-size:var(--fs-xs)}
 html body #log .gate{margin:0 12px}
-html body #log #allclear{font-size:11px;padding:2px 8px;min-height:0}
-html body #log #ship-btn{font-size:11.5px;padding:0 10px;min-height:22px!important;height:24px;letter-spacing:.3px}
+html body #log #allclear{font-size:var(--fs-xs);padding:2px 8px;min-height:0}
+html body #log #ship-btn{font-size:var(--fs-xs);padding:0 10px;min-height:22px!important;height:24px;letter-spacing:.3px}
 html body #log #card{max-height:none!important;overflow:visible!important;flex:0 0 auto}
 html body #log #card > .ai{overflow:visible!important;flex:none}
 html body #log #list{min-height:72px}
@@ -681,116 +843,116 @@ html body #log #list{min-height:72px}
 
 /* search + order: slim (Dustin 10/11) */
 html body #log .search{padding:4px 12px 3px;gap:5px}
-html body #log .search input,html body #log .search select{min-height:26px!important;height:28px;padding:2px 8px;font-size:12.5px;border-radius:7px}
+html body #log .search input,html body #log .search select{min-height:26px!important;height:28px;padding:2px 8px;font-size:var(--fs-sm);border-radius:7px}
 @media (any-pointer:coarse){ html body #log .search input,html body #log .search select{min-height:30px!important;height:32px} }
 
 /* FIT + NICE (Dustin 10/11): counters as number-over-label tiles in one slim strip;
    property characteristics compact; smaller list rows. */
 html body #log .stat{flex-direction:column;align-items:center;justify-content:center;gap:0;padding:2px 1px}
-html body #log .stat .n{font-size:13px;line-height:1.1}
-html body #log .stat .l{font-size:11px;line-height:1.1;letter-spacing:0;max-width:100%}
+html body #log .stat .n{font-size:var(--fs-sm);line-height:1.1}
+html body #log .stat .l{font-size:var(--fs-xs);line-height:1.1;letter-spacing:0;max-width:100%}
 html body #log #card .ai-row{padding:2px 0 1px;gap:8px}
-html body #log #card .ai-k{font-size:13px}
-html body #log #card .ai-big{font-size:17px}
-html body #log #card .ai-pct{font-size:16px}
-html body #log #card .ai-why{font-size:12px;line-height:1.25;padding-bottom:3px}
-html body #log #card .ai-mini{font-size:12px}html body #log #card .ai-mini b{font-size:13px}
+html body #log #card .ai-k{font-size:var(--fs-sm)}
+html body #log #card .ai-big{font-size:var(--fs-lg)}
+html body #log #card .ai-pct{font-size:var(--fs-md)}
+html body #log #card .ai-why{font-size:var(--fs-sm);line-height:1.25;padding-bottom:3px}
+html body #log #card .ai-mini{font-size:var(--fs-sm)}html body #log #card .ai-mini b{font-size:var(--fs-sm)}
 html body #log #card .ai-tail{padding:3px 0 0;gap:2px 10px}
-html body #log #card .details{font-size:13px}
-html body #log #card .addr{font-size:16px}
-html body #log #card .seqbig{font-size:20px}
+html body #log #card .details{font-size:var(--fs-sm)}
+html body #log #card .addr{font-size:var(--fs-md)}
+html body #log #card .seqbig{font-size:var(--fs-lg)}
 html body #list .row{padding:2px 8px}
-html body #list .row .s{font-size:13px;min-width:34px}
-html body #list .row .a b{font-size:13px}
-html body #list .row .a span{font-size:12px}
-html body #list .row .ai2{font-size:13px;line-height:1.1}
+html body #list .row .s{font-size:var(--fs-sm);min-width:34px}
+html body #list .row .a b{font-size:var(--fs-sm)}
+html body #list .row .a span{font-size:var(--fs-sm)}
+html body #list .row .ai2{font-size:var(--fs-sm);line-height:1.1}
 @media (any-pointer:coarse){ html body #list .row{min-height:30px} }
 
-html body #log .acts .act{font-size:11px!important;gap:3px!important;padding:3px 2px!important}
+html body #log .acts .act{font-size:var(--fs-xs)!important;gap:3px!important;padding:3px 2px!important}
 
 /* ONE GPS TOGGLE (Dustin 10/11: "what i want it to do, is be a center on gps or not").
    No puck yet: Connect GPS. Connected: tap = keep the map centred on you / stop. */
 html body #pos{display:none!important}
 #gpsbar{position:absolute;z-index:560;left:12px;bottom:12px;display:flex;gap:6px}
-#gpsbar button{border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#e8ebf7;font:600 12.5px var(--font-display);padding:6px 12px;box-shadow:0 3px 12px rgba(0,0,0,.55);cursor:pointer}
+#gpsbar button{border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#e8ebf7;font:600 var(--fs-sm) var(--sans);padding:6px 12px;box-shadow:0 3px 12px rgba(0,0,0,.55);cursor:pointer}
 #gps-toggle.on{border-color:#ff6a00;color:#ffd2b0;background:rgba(60,26,6,.95)}
 #gps-toggle.wait{color:var(--muted)}
 @media (any-pointer:coarse){ #gpsbar button{min-height:40px;padding:8px 14px} }
 /* SPEED (Dustin 10/19: "can we add MPH to the map overlay"): from the GPS, beside the GPS button */
-#mph{display:inline-flex;align-items:center;border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#fff;font:700 15px var(--font-display);padding:5px 12px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
+#mph{display:inline-flex;align-items:center;border-radius:20px;border:2px solid var(--border2);background:rgba(15,18,28,.95);color:#fff;font:700 var(--fs-md) var(--sans);padding:5px 12px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
 #mph.stale{color:var(--muted)}
 #mph b{font-weight:700;margin-right:3px}
-#mph .lim{margin-left:8px;min-width:26px;padding:1px 5px;border-radius:5px;background:#fff;color:#111;border:2px solid #111;font:700 13px var(--font-display);text-align:center}   /* a little speed-limit sign */
+#mph .lim{margin-left:8px;min-width:26px;padding:1px 5px;border-radius:5px;background:#fff;color:#111;border:2px solid #111;font:700 var(--fs-sm) var(--sans);text-align:center}   /* a little speed-limit sign */
 #mph.over{border-color:#ff4d4d;background:rgba(120,12,12,.95);color:#fff;animation:mphOver 1s ease-in-out infinite}
 @keyframes mphOver{50%{box-shadow:0 0 0 4px rgba(255,77,77,.45)}}
 
 /* ONE-LINE HEADER (Dustin 10/11: no dead space): brand, driver, status pills, window buttons */
 html body #log .topbar{flex-wrap:nowrap!important;padding:5px 10px!important;gap:6px!important}
-html body #log .topbar .brand{font-size:13px;white-space:nowrap}
+html body #log .topbar .brand{font-size:var(--fs-sm);white-space:nowrap}
 html body #log .topbar .brand small{display:none}
-html body #log .topbar .chip{font-size:11px;padding:1px 7px}
+html body #log .topbar .chip{font-size:var(--fs-xs);padding:1px 7px}
 html body #log .topbar .grow{display:none}
 html body #log .topbar .pillrow{flex:1 1 auto;justify-content:flex-start}
-html body #log .topbar .pill{font-size:11px!important;padding:1px 6px!important}
+html body #log .topbar .pill{font-size:var(--fs-xs)!important;padding:1px 6px!important}
 html body #log .topbar .winbtns{order:9;flex:none}
 html body #log .topbar .wbtn{width:24px;height:22px;min-height:0}
 /* uploaded / SHIP: thinner still */
-html body #log #allclear{font-size:11px;padding:1px 7px}
-html body #log #ship-btn{font-size:11px;height:20px;min-height:20px!important;padding:0 9px}
+html body #log #allclear{font-size:var(--fs-xs);padding:1px 7px}
+html body #log #ship-btn{font-size:var(--fs-xs);height:20px;min-height:20px!important;padding:0 9px}
 @media (any-pointer:coarse){ html body #log #ship-btn{height:24px;min-height:24px!important} html body #log .topbar .wbtn{width:30px;height:28px} }
 
 /* MAC: BIGGER CARD TEXT AND BUTTONS, SAME 290 px PANE (Dustin 10/12: "make the property card a little larger"
    -> "Bigger text and buttons"). Last in the sheet so it wins over the compact rules above. */
-html body #log #card .toprow .seqbig{font-size:25px}
+html body #log #card .toprow .seqbig{font-size:var(--fs-xl)}
 html body #log #card .toprow{gap:6px;flex-wrap:nowrap}
-html body #log #card .areabig{font-size:11px;padding:4px 6px;gap:4px}
-html body #log #card .areabig b{font-size:24px}
-html body #log #card .toprow .seqbig.s4{font-size:21px}   /* a 4-digit SEQ still fits beside AREA at 290 px */
-html body #log #card .addr{font-size:21.5px;margin-top:5px}
-html body #log #card .city{font-size:16px}
-html body #log #card .pid{font-size:13.5px}
-html body #log #card .aerfloat{min-height:0;height:28px;margin:2px 0 0 8px!important;padding:0 10px;font-size:14px}
+html body #log #card .areabig{font-size:var(--fs-xs);padding:4px 6px;gap:4px}
+html body #log #card .areabig b{font-size:var(--fs-xl)}
+html body #log #card .toprow .seqbig.s4{font-size:var(--fs-xl)}   /* a 4-digit SEQ still fits beside AREA at 290 px */
+html body #log #card .addr{font-size:var(--fs-xl);margin-top:5px}
+html body #log #card .city{font-size:var(--fs-md)}
+html body #log #card .pid{font-size:var(--fs-sm)}
+html body #log #card .aerfloat{min-height:0;height:28px;margin:2px 0 0 8px!important;padding:0 10px;font-size:var(--fs-md)}
 html body #log .navbtns,html body #log .acts{margin-top:7px!important}
-html body #log .navbtns .aerbtn{min-height:50px!important;font-size:15.5px!important;padding:4px 4px!important}
-html body #log .acts .act{min-height:48px!important;font-size:13.5px!important;padding:3px 2px!important;gap:4px!important}
+html body #log .navbtns .aerbtn{min-height:50px!important;font-size:var(--fs-md)!important;padding:4px 4px!important}
+html body #log .acts .act{min-height:48px!important;font-size:var(--fs-sm)!important;padding:3px 2px!important;gap:4px!important}
 html body #log .acts{grid-template-columns:minmax(0,1fr)!important}   /* Flag only (No Photos + NVFR removed 10/17: the AI calls NVFR) */
 html body #log .navbtns{grid-template-columns:minmax(0,1fr)!important}   /* Route alone on its row: full width, centred over Flag (Dustin 10/18) */
-html body #log #card .ai-k{font-size:15px}
-html body #log #card .ai-big{font-size:23px}
-html body #log #card .ai-pct{font-size:21px}
-html body #log #card .ai-why{font-size:14.5px;line-height:1.3;max-height:calc(2 * 1.3em);padding-bottom:0;margin-bottom:3px;overflow:hidden}
+html body #log #card .ai-k{font-size:var(--fs-md)}
+html body #log #card .ai-big{font-size:var(--fs-xl)}
+html body #log #card .ai-pct{font-size:var(--fs-xl)}
+html body #log #card .ai-why{font-size:var(--fs-md);line-height:1.3;max-height:calc(2 * 1.3em);padding-bottom:0;margin-bottom:3px;overflow:hidden}
 html body #log #card .ai-k{white-space:nowrap}
-html body #log #card .ai-big.nvobs{font-size:17px;white-space:nowrap;letter-spacing:.2px}
-html body #log #card .ai-mini{font-size:14.5px}html body #log #card .ai-mini b{font-size:15px}
-html body #log #card .ai-wait{font-size:16px}
-html body #log #card .details,html body #log #card .cardfoot .details{font-size:14.5px}
+html body #log #card .ai-big.nvobs{font-size:var(--fs-lg);white-space:nowrap;letter-spacing:.2px}
+html body #log #card .ai-mini{font-size:var(--fs-md)}html body #log #card .ai-mini b{font-size:var(--fs-md)}
+html body #log #card .ai-wait{font-size:var(--fs-md)}
+html body #log #card .details,html body #log #card .cardfoot .details{font-size:var(--fs-md)}
 /* COUNTS IN TWO LINES (Dustin 10/12): To Drive · Driven · Total on top; Needs · Upload · Rating below. Bigger. */
 html body #log .stats{display:grid!important;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr)!important;gap:3px 4px!important;padding:5px 12px!important}
 html body #log .stat{display:flex;flex-direction:row;align-items:baseline;justify-content:center;gap:5px;padding:3px 2px!important;min-height:0!important;border-radius:7px}
-html body #log .stat .n{font-size:16px!important;line-height:1.1}
-html body #log .stat .l{font-size:11px!important;letter-spacing:0;line-height:1.1}
+html body #log .stat .n{font-size:var(--fs-md)!important;line-height:1.1}
+html body #log .stat .l{font-size:var(--fs-xs)!important;letter-spacing:0;line-height:1.1}
 html body #log .stat[data-f="pending"]{order:1}html body #log .stat[data-f="complete"]{order:2}html body #log .stat[data-f="all"]{order:3}
 html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="uploading"]{order:5}html body #log .stat[data-f="rating"]{order:6}
-#setup{margin:6px 8px;padding:8px 10px;border-radius:10px;background:#2a1d10;border:1px solid #c9822b;font-size:13px;line-height:1.35}
+#setup{margin:6px 8px;padding:8px 10px;border-radius:10px;background:#2a1d10;border:1px solid #c9822b;font-size:var(--fs-sm);line-height:1.35}
 #setup.ok{background:#10261a;border-color:#2ecc8a;padding:4px 10px}
 #setup .h{font-weight:600;margin-bottom:4px}
 #today-dd{margin:6px 8px;position:relative;font-family:var(--sans)}
-#today-dd .bar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:9px;background:#1f6fe5;color:#fff;font:600 13px var(--sans);cursor:pointer}
-#today-dd .bar small{font:600 13px var(--sans);color:#dfe9ff;margin-left:6px}
+#today-dd .bar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:9px;background:#1f6fe5;color:#fff;font:600 var(--fs-sm) var(--sans);cursor:pointer}
+#today-dd .bar small{font:600 var(--fs-sm) var(--sans);color:#dfe9ff;margin-left:6px}
 #today-dd .menu{display:none;position:absolute;left:0;right:0;top:34px;z-index:999;background:#151b36;border:1px solid #2b3466;border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 #today-dd.open .menu{display:block}
-#today-dd .h{font:700 11px var(--sans);color:#9aa3c7;letter-spacing:.06em;margin:4px 6px}
-#today-dd .c{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;font:600 13px var(--sans);color:#e6eaf5;cursor:pointer}
-#today-dd .c small{font:600 11px var(--sans);color:#9aa3c7} #today-dd .c.on{background:#24306a} #today-dd .c.dim{opacity:.55;cursor:default}
-#today-dd .note{font:600 11px var(--sans);color:#9aa3c7;margin:2px 8px 4px}
+#today-dd .h{font:700 var(--fs-xs) var(--sans);color:#9aa3c7;letter-spacing:.06em;margin:4px 6px}
+#today-dd .c{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;font:600 var(--fs-sm) var(--sans);color:#e6eaf5;cursor:pointer}
+#today-dd .c small{font:600 var(--fs-xs) var(--sans);color:#9aa3c7} #today-dd .c.on{background:#24306a} #today-dd .c.dim{opacity:.55;cursor:default}
+#today-dd .note{font:600 var(--fs-xs) var(--sans);color:#9aa3c7;margin:2px 8px 4px}
 #setup.calm{background:#2a2410;border-color:#f0a500;color:#ffe9b0;font-weight:600}
 #setup.calm .it{display:block}
-#shipq-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:948;max-width:calc(100% - 24px);width:360px;background:#e3ecff;color:#10224d;border:2px solid #5b8cff;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:600 13.5px/1.35 var(--sans);display:none}
-#off-tag{position:absolute;top:12px;right:60px;z-index:950;background:#2b2f45;color:#e6eaf5;border:1px solid #5a6390;border-radius:999px;padding:6px 12px;font:600 12.5px var(--sans);box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;pointer-events:none}
+#shipq-note{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:948;max-width:calc(100% - 24px);width:360px;background:#e3ecff;color:#10224d;border:2px solid #5b8cff;border-radius:12px;padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.4);font:600 var(--fs-sm)/1.35 var(--sans);display:none}
+#off-tag{position:absolute;top:12px;right:60px;z-index:950;background:#2b2f45;color:#e6eaf5;border:1px solid #5a6390;border-radius:999px;padding:6px 12px;font:600 var(--fs-sm) var(--sans);box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;pointer-events:none}
 #setup .it{display:flex;gap:6px;margin:3px 0}
 #setup .it .m{flex:0 0 18px;font-weight:600}
 #setup .it.ok .m{color:#2ecc8a} #setup .it.bad .m{color:#ff6b6b}
-#setup .it .fx{color:#d9c7a8;font-size:12px}
+#setup .it .fx{color:#d9c7a8;font-size:var(--fs-sm)}
 #setup .it .sh{display:none}
 /* SHORT LAPTOP SCREENS (desk-p52; MT 10/28 10:15 PM "make the list on the bottom left just a little bigger so it shows
    more than two", Dustin 10:30 PM "shrink the parcel card on the computer some to show a bit more of the next
@@ -800,29 +962,29 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
    Text stays 12 px or more; buttons stay 40 px tall for a finger. Last in the sheet so it wins. */
 @media (min-width:700px) and (max-height:900px){
   html body #log #card{padding:6px 10px!important;margin-top:5px!important}
-  html body #log #card .toprow .seqbig{font-size:21px}
-  html body #log #card .toprow .seqbig.s4{font-size:19px}
-  html body #log #card .areabig b{font-size:20px}
+  html body #log #card .toprow .seqbig{font-size:var(--fs-xl)}
+  html body #log #card .toprow .seqbig.s4{font-size:var(--fs-lg)}
+  html body #log #card .areabig b{font-size:var(--fs-lg)}
   html body #log #card .areabig{padding:3px 6px}
-  html body #log #card .addr{font-size:18px;line-height:1.15;margin-top:3px}
-  html body #log #card .city{font-size:14px;margin-top:0}
-  html body #log #card .pid{font-size:13px;margin-top:1px}
-  html body #log #card .aerfloat{height:26px;font-size:13px}
+  html body #log #card .addr{font-size:var(--fs-lg);line-height:1.15;margin-top:3px}
+  html body #log #card .city{font-size:var(--fs-md);margin-top:0}
+  html body #log #card .pid{font-size:var(--fs-sm);margin-top:1px}
+  html body #log #card .aerfloat{height:26px;font-size:var(--fs-sm)}
   html body #log .navbtns,html body #log .acts{margin-top:5px!important}
-  html body #log .navbtns .aerbtn{min-height:40px!important;height:40px;font-size:14.5px!important;padding:2px 4px!important}
-  html body #log .acts .act{min-height:40px!important;font-size:13px!important}
+  html body #log .navbtns .aerbtn{min-height:40px!important;height:40px;font-size:var(--fs-md)!important;padding:2px 4px!important}
+  html body #log .acts .act{min-height:40px!important;font-size:var(--fs-sm)!important}
   html body #log #card > .ai{margin-top:4px;padding-top:2px}
   html body #log #card .ai.waitrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 10px}
-  html body #log #card .ai.waitrow > .ai-wait{font-size:14px;padding:1px 0;flex:0 1 auto}
+  html body #log #card .ai.waitrow > .ai-wait{font-size:var(--fs-md);padding:1px 0;flex:0 1 auto}
   html body #log #card .ai.waitrow > .ai-tail:empty{display:none}
   html body #log #card .ai.waitrow > .cardfoot{flex:1 1 auto;min-width:0}
   html body #log #card .ai.waitrow .cardfoot .details{border-top:0;margin-top:0;padding-top:0}
-  html body #log #card .details,html body #log #card .cardfoot .details{font-size:13px}
-  html body #log #card .ai-why{font-size:13px;max-height:calc(2 * 1.25em);line-height:1.25}
-  html body #log #card .ai-big{font-size:20px}
-  html body #log #card .ai-pct{font-size:18px}
-  html body #log #card .ai-k{font-size:13.5px}
-  #setup{margin:4px 8px;padding:4px 9px;font-size:12.5px}
+  html body #log #card .details,html body #log #card .cardfoot .details{font-size:var(--fs-sm)}
+  html body #log #card .ai-why{font-size:var(--fs-sm);max-height:calc(2 * 1.25em);line-height:1.25}
+  html body #log #card .ai-big{font-size:var(--fs-lg)}
+  html body #log #card .ai-pct{font-size:var(--fs-lg)}
+  html body #log #card .ai-k{font-size:var(--fs-sm)}
+  #setup{margin:4px 8px;padding:4px 9px;font-size:var(--fs-sm)}
   #setup.calm .it{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0}
   #setup.calm .it .lg{display:none}
   #setup.calm .it .sh{display:inline}
@@ -906,7 +1068,7 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
     </div>
     <div class="hud" id="tilebar">
       <div class="row2"><b>Map</b><button class="sbtn on" data-base="topo">Streets</button><button class="sbtn" data-base="img">Imagery</button></div>
-      <div class="row2" style="font-size:12px;color:var(--muted);gap:10px"><span><i class="kdot" style="background:#1f6fe5"></i>Not taken</span><span><i class="kdot" style="background:var(--success)"></i>Done, clearing</span><span><i class="kdot" style="background:var(--danger)"></i>Needs something</span></div>
+      <div class="row2" style="font-size:var(--fs-sm);color:var(--muted);gap:10px"><span><i class="kdot" style="background:#1f6fe5"></i>Not taken</span><span><i class="kdot" style="background:var(--success)"></i>Done, clearing</span><span><i class="kdot" style="background:var(--danger)"></i>Needs something</span></div>
       <div class="row2"><b>Driven</b><button class="sbtn" id="show-driven" title="Finished dots leave the map on their own. Show them again in green.">Show driven</button></div>
       <div class="row2"><button class="sbtn" id="prep-btn">Prepare for no signal</button></div><div id="prep-st" style="line-height:1.4"></div>
     </div>
@@ -916,7 +1078,7 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
     <button id="dp-end" title="Set today's end point (hotel, or toward the next county)">🏁</button>
     <div id="dp-chip"><div>Tap the map where today ends <a id="dp-here">or here tonight</a> <a id="dp-cancel">cancel</a></div>
       <div style="display:flex;gap:6px;margin-top:6px"><input id="dp-q" placeholder="or type a city or an exact address" autocomplete="off"><button class="sbtn" id="dp-go">Go</button></div>
-      <div id="dp-msg" style="font-size:12px;color:var(--muted);margin-top:4px"></div></div>
+      <div id="dp-msg" style="font-size:var(--fs-sm);color:var(--muted);margin-top:4px"></div></div>
     <div id="nogrid">Map tiles unavailable — pins on a coordinate grid. Aerials still work.</div>
   </section>
 </div>
@@ -926,9 +1088,9 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
   <p>The field log on the laptop. The camera phone works exactly as before.</p>
   <div id="signin-block">
     <label class="hint">Driver initials</label>
-    <input id="in-drv" maxlength="4" placeholder="RF" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 20px var(--font-display);padding:9px 10px;text-transform:uppercase">
+    <input id="in-drv" maxlength="4" placeholder="RF" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-lg) var(--sans);padding:9px 10px;text-transform:uppercase">
     <label class="hint" style="display:block;margin-top:10px">Driver key (from your camera link, once only)</label>
-    <input id="in-key" placeholder="already saved on this laptop" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 15px ui-monospace,Consolas,monospace;padding:9px 10px">
+    <input id="in-key" placeholder="already saved on this laptop" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-md) var(--sans);padding:9px 10px">
   </div>
   <button class="btn p" id="open-folder">Open today's drive file folder…</button>
   <p class="hint">Pick <b>Dropbox › LHV Consulting Work › _COUNTY ENGINE › DRIVE FILES › &lt;COUNTY&gt;</b> (the folder holding the .xlsx and <b>aerials</b>).</p>
@@ -972,7 +1134,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p64';
+var DESK_BUILD = 'desk-p81';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -999,13 +1161,20 @@ function _lhvDate(when){   // EASTERN, never UTC — same rule as index.html
 function _noteKeep(s){ try { sessionStorage.setItem('lhv_lastnote', new Date().toLocaleTimeString() + ' ' + String(s || '').replace(/\s+/g, ' ').trim().slice(0, 140)); } catch (e) {} }
 function _reloadWhy(s){ try { sessionStorage.setItem('lhv_reload_why', new Date().toLocaleTimeString() + ' ' + String(s || '').slice(0, 100)); } catch (e) {} }
 var _toastT = null;
-function toast(msg, ms){ _noteKeep(msg); var t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(_toastT); _toastT = setTimeout(function(){ t.style.display = 'none'; }, ms || 2600); }
+/* desk-p66: on the Kestrel app the words name the iPad, never a laptop or a puck (laptops: unchanged) */
+function _devText(s){
+  if (!(window.LSNative && window.LSNative.app) || s == null) return s;
+  return String(s).replace(/Laptop is offline<\/b> — reconnect Wi-Fi to your iPhone hotspot\./g, 'iPad is offline</b> — it reconnects by itself.')
+    .replace(/connect the GPS puck/g, 'wait for the iPad\'s GPS').replace(/GPS puck/g, 'iPad GPS')
+    .replace(/\bthis laptop\b/g, 'this iPad').replace(/\bthe laptop\b/g, 'the iPad').replace(/\bLaptop\b/g, 'iPad').replace(/\blaptop\b/g, 'iPad');
+}
+function toast(msg, ms){ msg = _devText(msg); _noteKeep(msg); var t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(_toastT); _toastT = setTimeout(function(){ t.style.display = 'none'; }, ms || 2600); }
 // In-app confirm/alert (keyboard: Enter = primary, Esc = cancel)
 var _modalResolve = null;
 function modal(title, body, buttons){
   return new Promise(function(res){
     _modalResolve = res; _noteKeep(title + ': ' + body);
-    $('m-title').textContent = title; $('m-body').textContent = body;
+    $('m-title').textContent = _devText(title); $('m-body').textContent = _devText(body);
     var mb = $('m-btns'); mb.innerHTML = '';
     buttons.forEach(function(b){ var el = document.createElement('button'); el.className = 'btn ' + (b.cls || 'g'); el.textContent = b.label;
       el.onclick = function(){ closeModal(b.value); }; mb.appendChild(el); });
@@ -1522,6 +1691,7 @@ function rebuildLogs(){
     var l = out[it.seq] || (out[it.seq] = { seq: it.seq });
     Object.keys(it.patch).forEach(function(f){ if (it.patch[f] === null) delete l[f]; else l[f] = it.patch[f]; });
   });
+  try { _appClosesApply(out); } catch (e) {}   /* desk-p65: closes heard over the phone-iPad link (Kestrel app only) */
   Object.keys(out).forEach(function(k){ if (!out[k].seq) out[k].seq = k; if (_shippedSeqs[k]) { out[k].shipped = true; out[k].shippedAt = _shippedSeqs[k]; } });
   state.logs = out;
 }
@@ -1594,6 +1764,8 @@ function wireListeners(){
   link.on('jobFolder', function(v){ _followSessionCounty(v); });
   /* desk-p53: the camera's seq can also arrive on the camera line (see _camActiveIn below); one handler for both */
   link.on('active', function(v){ _camActiveIn(v, 'sdk'); });
+  /* desk-p65: the camera's answer to a map tap, through the server (Kestrel app only) */
+  if (_appOn()) link.on('appLockAck', function(v){ _appAckIn(v, 'server'); });
   link.on('hbCam', function(v){ if (v && v !== _camHbLast) { _camHbLast = v; _camHbSeenAt = Date.now(); _hbHeardAt = Date.now(); _lsnW.n = 0; renderLink(); } });
   wireJobDriven();
   _camLineStart();
@@ -1870,8 +2042,8 @@ function _netBanner(on){
     var mw = document.getElementById('mapwrap'), inMap = !!(mw && mw.clientWidth >= 420);
     b.style.cssText = 'position:' + (inMap ? 'absolute' : 'fixed') + ';left:50%;top:64px;transform:translateX(-50%);z-index:1500;max-width:min(560px,calc(100% - 32px));'
       + 'background:#2b2a1c;border:1px solid #b9a24a;color:#f4ecc8;border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.45);'
-      + 'font:600 14px/1.35 var(--sans)"Segoe UI",sans-serif;text-align:center;pointer-events:none';
-    b.innerHTML = '<b style="font-weight:600">Laptop is offline</b> — reconnect Wi-Fi to your iPhone hotspot.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>';
+      + 'font:600 var(--fs-md)/1.35 var(--sans)"Segoe UI",sans-serif;text-align:center;pointer-events:none';
+    b.innerHTML = _devText('<b style="font-weight:600">Laptop is offline</b> — reconnect Wi-Fi to your iPhone hotspot.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>');
     (inMap ? mw : document.body).appendChild(b);
   }
   if (b) b.style.display = on ? 'block' : 'none';
@@ -2479,8 +2651,9 @@ function renderCard(){
     '<div class="acts">' +
       (seqStatus(l, seq) === 'incomplete' && !locked && String(seq) !== String(_camOpen) ? '<button class="act" id="b-close" title="Close it: the photos are good"><span>✓ Close</span></button>' : '') +
       ((pc > 0 || shot > 0) ? '<button class="act" id="b-reopen"' + (locked ? ' disabled' : '') + ' title="Reopen: set today\'s photos aside and put it back on the drive list"><span>↺ Reopen</span></button>' : '') +
+      _appCardActs(seq, l, pc, shot, locked) +
     '</div>' +
- (pend ? '<div style="margin-top:6px;color:var(--warning);font:700 13px var(--font-display)">⏳ ' + pend + ' change(s) ' + (_linkUp() ? 'sending…' : 'saved on this laptop, waiting for signal') + '</div>' : '') +
+ (pend ? '<div style="margin-top:6px;color:var(--warning);font:700 var(--fs-sm) var(--sans)">⏳ ' + pend + ' change(s) ' + (_linkUp() ? 'sending…' : _devText('saved on this laptop, waiting for signal')) + '</div>' : '') +
     '<div class="ai' + (/^<div class="ai-wait">/.test(ai) ? ' waitrow' : '') + '">' + ai + '<div class="cardfoot">' + detailsLine(r) + '</div></div>';   // value / parcel map: reference only, at the bottom
   // NO PHOTOS IS OFF THE LAPTOP (Dustin 2026-10-17: "with the new system, no pictures is no longer an
   // option" / "i wanted it taken off"). Every parcel is photographed. The button and the P key are gone;
@@ -2490,7 +2663,9 @@ function renderCard(){
   // FLAG IS OFF THE CARD too (Dustin 10/21: "we can eliminate the flag button"); the F key with it.
   // An older log that carries flagged still shows its ★ in the list.
   if ($('b-close')) $('b-close').onclick = actCloseHere;
-  var _nb = ($('b-reopen') ? 1 : 0) + ($('b-close') ? 1 : 0), _acts = c.querySelector('.acts');
+  var _nb = ($('b-reopen') ? 1 : 0) + ($('b-close') ? 1 : 0) + ($('b-lock') ? 1 : 0) + ($('b-nvfr') ? 1 : 0), _acts = c.querySelector('.acts');
+  if ($('b-lock')) $('b-lock').onclick = function(){ _appTapLock(seq); };   /* desk-p66 */
+  if ($('b-nvfr')) $('b-nvfr').onclick = function(){ _appNvfr(seq); };
   if ($('b-reopen')) $('b-reopen').onclick = actReopen;
   if (_acts) { if (!_nb) _acts.style.display = 'none'; else _acts.style.setProperty('grid-template-columns', 'repeat(' + _nb + ',minmax(0,1fr))', 'important'); }
   if (_np.seq && String(_np.seq) !== String(seq)) renderNpPanel();   // selection moved: the panel closes
@@ -2526,7 +2701,7 @@ function setupState(){
     charger: _batt ? !!_batt.charging : null,
     battery: _batt ? Math.round(_batt.level * 100) : null,
     online: _linkUp(),
-    gps: !!(Gps.port || Gps.mock),
+    gps: !!(Gps.port || Gps.mock || Gps.app),
     camera: camAt > 0 && Date.now() - camAt < 3 * 60000,
   };
 }
@@ -2545,6 +2720,7 @@ function _dayStarted(){
 }
 function renderSetup(){
   var el = document.getElementById('setup'); if (!el || (MOCK && !/[?&]setuptest=1/.test(location.search))) return;
+  if (_inApp()) { el.style.display = 'none'; return; }   /* desk-p66: the app's own setup screen covers pairing, downloads and the link */
   if (!state.job) { el.style.display = 'none'; return; }
   var st = setupState(), items = SETUP_ITEMS.filter(function(it){ return st[it[0]] !== null; });
   var good = items.filter(function(it){ return st[it[0]]; }).length;
@@ -2593,7 +2769,36 @@ function renderLink(){
 }
 // a tight pane (long county name, narrow log): the driver chip gives way first, never the county or the status icons
 function fitTopbar(){ var tb = document.querySelector('#log .topbar'), c = $('drv-chip'); if (!tb || !c) return;
-  c.style.display = ''; }
+  c.style.display = ''; try { _appChips(); } catch (e) {} }
+// desk-p76 KESTREL APP STATUS CHIPS (Dustin's iPad photo, desk-p75: "📷 ✕" was wide, ↑ clipped, SHIP crowded): in the app
+// every status chip is ONE icon in a 30 px circle, the state is the ring colour, and a small corner badge carries the
+// rest (✕ = camera not heard / no signal, the upload or sending count only when > 0, ! = cannot save). The laptop's
+// renderers (renderLink, renderShipGate, renderHoldPill) still decide the state and the tooltip; this only redraws.
+function _appIcoChip(el, icon, kind, badge, up){
+  if (!el) return;
+  var h = '<span class="k-i' + (up ? ' up' : '') + '">' + icon + '</span>' + (badge != null && badge !== '' ? '<span class="k-b">' + esc(String(badge)) + '</span>' : '');
+  if (!el.querySelector('.k-i') || el.getAttribute('data-k') !== kind + '|' + h) { el.setAttribute('data-k', kind + '|' + h); el.innerHTML = h; }
+  el.classList.remove('k-ok', 'k-wait', 'k-bad', 'k-rust'); el.classList.add('k-' + kind, 'ico');
+  el.setAttribute('aria-label', el.title || '');
+}
+function _appKind(el){ var c = el.className; return /\bbad\b/.test(c) ? 'bad' : /\bwarn\b/.test(c) ? 'wait' : /\bok\b/.test(c) ? 'ok' : 'wait'; }
+function _appChips(){
+  if (!(window.LSNative && window.LSNative.app)) return;
+  var lp = $('link-pill'), cp = $('cam-pill'), up = $('allclear'), hp = $('hold-pill');
+  var pr = document.querySelector('#log .topbar .pillrow'), st = document.querySelector('#log .stats'); if (pr && st) st.appendChild(pr);
+  if (lp) { var lt = lp.querySelector('.k-i') ? lp.getAttribute('data-raw') || '' : lp.textContent; lp.setAttribute('data-raw', lt);
+    var ln = (lt.match(/(\d+)\s*$/) || [])[1], lk = _appKind(lp);
+    _appIcoChip(lp, '☁️', lk === 'wait' && !ln ? 'wait' : lk, lk === 'bad' ? (ln || '✕') : (ln || null)); }
+  if (cp) { var ct = cp.querySelector('.k-i') ? cp.getAttribute('data-raw') || '' : cp.textContent; cp.setAttribute('data-raw', ct);
+    var ck = _appKind(cp); _appIcoChip(cp, '📷', ck === 'ok' ? 'ok' : 'rust', ck === 'ok' ? null : (/\?/.test(ct) ? '?' : '✕')); }
+  if (up) { var ut = up.querySelector('.k-i') ? up.getAttribute('data-raw') || '' : up.textContent; up.setAttribute('data-raw', ut);
+    var uk = _appKind(up), un = (ut.match(/(\d+)/) || [])[1];
+    _appIcoChip(up, '↑', uk, /⛔/.test(ut) ? '!' : (un && Number(un) > 0 ? un : (/\?/.test(ut) ? '?' : null)), true); }
+  if (hp && hp.style.display !== 'none') { var ht = hp.querySelector('.k-i') ? hp.getAttribute('data-raw') || '' : hp.textContent; hp.setAttribute('data-raw', ht);
+    _appIcoChip(hp, '📦', 'wait', (ht.match(/(\d+|\?)\s*$/) || [])[1] || null); }
+  var j = $('tb-job'); if (j && !j._dd) { j._dd = true; j.classList.add('dd'); j.setAttribute('role', 'button');
+    j.addEventListener('click', function(e){ e.stopPropagation(); if (window._todayToggle && window._todayToggle()) return; toast('No schedule for today on this iPad yet', 2500); }); }
+}
 window.addEventListener('resize', fitTopbar); setInterval(fitTopbar, 2000);
 // ── SHIP GATE (mirrors index.html renderShipGate / shipSession) ──────────────
 var STALE_MS = 120000;
@@ -2610,6 +2815,7 @@ function renderShipGate(){
   else if (pend > 0) set('bad', '↑ <b>' + pend + '</b>', pend + ' photo' + (pend > 1 ? 's' : '') + ' uploading — counts down to ✓');
   else if (parked > 0) set('bad', '⚠ <b>' + parked + '</b>', parked + ' photo(s) FAILED to upload — tap the camera sync pill');
   else set('ok', '<b>✓</b>', 'All photos uploaded — safe to ship' + (held > 0 ? ' (' + held + ' held on the camera)' : ''));
+  try { _appChips(); } catch (e) {}   /* desk-p76: the app's icon chips */
 }
 // ── WHAT THE CAMERA IS HOLDING, AND HOW OLD THAT NEWS IS (Dustin 10/24: "right now it kind of leaves you blind") ──
 // The camera publishes sync.holdSeqs (parcels with photos or a close not yet delivered) and sync.at. In a dead zone
@@ -2702,9 +2908,11 @@ async function shipSession(opts){
     var back = await withTimeout(link.once('shipped/' + toShip[0].seq), 10000);   // a ship that did not land is not a ship
     if (!back) throw new Error('write did not land');
     _shipQSet(null); _shipQWhy = '';
+    /* desk-p81 (11/4, MT Lucas 12:34 PM): the move to the next county starts the moment the ship lands, never after OK on the
+       Shipped box. Mike shipped and drove on to Cleveland; the box sat unanswered and the map stayed on Lucas 18 minutes. */
+    try { if (window._todayAfterShip) window._todayAfterShip(); } catch (e) {}
     if (auto) _noteShow('sheet-note', '✓ Shipped ' + toShip.length + ' parcel(s) by itself when signal came back. Locked. Nothing to do.', 15000);
     else await alertBox('Shipped', '✓ Shipped ' + toShip.length + ' parcel(s). Locked.');
-    try { if (window._todayAfterShip) window._todayAfterShip(); } catch (e) {}
   } catch (e) {
     // the stamp did not land (signal dropped mid-SHIP): kept on this laptop and sent again by itself — never "press SHIP again"
     _shipQSet({ at: Date.now(), bucket: state.job && state.job.bucket, n: toShip.length }); _shipQWhy = 'did not land: ' + String(e && e.message || e).slice(0, 60);
@@ -2746,13 +2954,13 @@ async function actReopen(){
   var n = Math.max(Number(_photoCounts[s] || 0), Number(l.photoCount || 0));
   var day = String(l.driveDate || _etDay()).slice(0, 10), pid = String(r.parcelId || ''), bucket = (state.job && state.job.bucket) || '';
   if (!pid) { await alertBox('Cannot reopen', 'SEQ ' + s + ' has no parcel number on the drive file.'); return; }
-  var tile = function(id, cap){ return '<div style="text-align:center"><div id="' + id + '" style="width:100%;aspect-ratio:1;border-radius:8px;border:1px solid #2a3350;background:#11152a center/cover no-repeat;display:flex;align-items:center;justify-content:center;font:600 11px system-ui;color:#5d6788">Loading…</div><div style="font:600 11px system-ui;color:#8a93ad;margin-top:3px">' + cap + '</div></div>'; };
+  var tile = function(id, cap){ return '<div style="text-align:center"><div id="' + id + '" style="width:100%;aspect-ratio:1;border-radius:8px;border:1px solid #2a3350;background:#11152a center/cover no-repeat;display:flex;align-items:center;justify-content:center;font:600 var(--fs-xs) var(--sans);color:#5d6788">Loading…</div><div style="font:600 var(--fs-xs) var(--sans);color:#8a93ad;margin-top:3px">' + cap + '</div></div>'; };
   var shown = Math.max(1, Math.min(n || 4, 8));
   var pr = modal('Reopen SEQ ' + s + ' · ' + (r.street || '') + '?', '', [{ label: 'Cancel', value: false }, { label: 'Set aside & reopen', value: true, cls: 'p' }]);
   var mb = $('m-body');
   mb.innerHTML = '<div style="display:grid;grid-template-columns:repeat(' + Math.min(shown + 1, 5) + ',1fr);gap:8px;margin:6px 0 12px">' + tile('ro-aer', 'Aerial')
     + Array.apply(null, Array(shown)).map(function(_, i){ return tile('ro-p' + i, 'Photo ' + (i + 1)); }).join('') + '</div>'
-    + '<div style="font:500 15px/1.45 system-ui;color:#dfe4f2">These <b>' + (n || 'today\'s') + ' photo' + (n === 1 ? '' : 's') + '</b> taken today will be <b>set aside</b> (kept, not on the client file) and SEQ ' + esc(s) + ' goes back to <b style="color:#7fb0ff">to drive</b> on the map.</div>';
+    + '<div style="font:500 var(--fs-md)/1.45 var(--sans);color:#dfe4f2">These <b>' + (n || 'today\'s') + ' photo' + (n === 1 ? '' : 's') + '</b> taken today will be <b>set aside</b> (kept, not on the client file) and SEQ ' + esc(s) + ' goes back to <b style="color:#7fb0ff">to drive</b> on the map.</div>';
   try { var box = mb.closest('.modal') || mb.parentElement; if (box) box.style.maxWidth = '620px'; } catch (e) {}
   loadAerial(s).then(function(u){ var el = $('ro-aer'); if (el) { if (u) { el.style.backgroundImage = 'url(' + u + ')'; el.textContent = ''; } else el.textContent = 'no aerial'; } });
   var reqAt = Date.now(), peek = 'photoPeekResult/' + s;
@@ -2910,7 +3118,7 @@ function initMap(){
   // a real gesture (finger, mouse, wheel, zoom buttons) — not our own setView/panTo
   map.getContainer().addEventListener('pointerdown', function(){ _userMapAt = Date.now(); }, true);
   map.getContainer().addEventListener('wheel', function(){ _userMapAt = Date.now(); }, { capture: true, passive: true });
-  map.on('dragstart', function(){ if (_followMe) { _followMe = false; $('follow-btn').classList.remove('on'); } });
+  map.on('dragstart', function(){ if (_followMe) { _followMe = false; $('follow-btn').classList.remove('on'); try { _appMeSync(); } catch (e) {} } });
 }
 function _baseKey(k){ return k === 'img' && map.getZoom() >= 16 ? 'imgClose' : k; }
 function setBase(k){
@@ -2966,7 +3174,7 @@ function buildMarkers(){
     /* desk-p52: the "+N" of a batch is now the live count badge (renderMapState), shared with stacked spots */
     var m = L.marker(p, { icon: L.divIcon({ className: '', html: '<div class="pin pending"><span>' + esc(r.seq) + '</span></div>', iconSize: [0, 0] }), keyboard: false, title: 'SEQ ' + (g ? g.join(', ') : r.seq) + ' · ' + r.street });
     _stkP0[String(r.seq)] = map.project(p, 0);   /* zoom-0 pixels: any zoom is these x 2^z, so stacks cost no projection */
-    m.on('click', function(){ var k = String(r.seq); if ((_stk.n[k] || 0) >= 2 && _stk.rep[k] === k) { _stkOpenAt(k); return; } select(r.seq, { pan: false, from: 'map' }); });
+    m.on('click', function(){ var k = String(r.seq); if ((_stk.n[k] || 0) >= 2 && _stk.rep[k] === k) { _stkOpenAt(k); return; } select(r.seq, { pan: false, from: 'map' }); _appTapPair(r.seq); });   /* desk-p74: a tap selects; a double tap locks on the camera (Kestrel app only) */
     // a quick second tap on a pin never zooms the map
     m.on('dblclick', function(e){ try { L.DomEvent.stop(e); if (e.originalEvent) L.DomEvent.stop(e.originalEvent); } catch (x) {} });
     m.bindTooltip(esc((g ? g.join(', ') : r.seq) + ' · ' + (r.street || '')), { direction: 'top', offset: [0, -44], className: 'plabel', opacity: 1 });
@@ -3112,7 +3320,7 @@ function _stkRender(){
     el.addEventListener('click', function(e){
       if (e.target.closest('.stk-x')) { _stkClose(); return; }
       var row = e.target.closest('.stk-row'); if (!row || !row.getAttribute('data-seq')) return;
-      var s = row.getAttribute('data-seq'); _stkClose(); select(s, { pan: false, from: 'map' });   // exactly a pin tap
+      var s = row.getAttribute('data-seq'); _stkClose(); select(s, { pan: false, from: 'map' }); _appTapPair(s);   // exactly a pin tap (desk-p74: a double tap locks on the camera, app only)
     });
     map.on('move', function(){ if (_stkView.key) _stkPlace(); });
     map.on('zoomstart', _stkClose);
@@ -3123,6 +3331,12 @@ function _stkRender(){
 }
 function _stkPlace(){
   var el = $('stklist'), V = _stkView, m = markers[V.key]; if (!el || !V.key || !m) return;
+  if (_inApp()) {   /* desk-p71: the top band, beside +/-, never over the middle of the map */
+    var r0 = map.getContainer().getBoundingClientRect(), bd = el.querySelector('.stk-b');
+    el.style.left = Math.round(r0.left + 72) + 'px'; el.style.top = Math.round(r0.top + 64) + 'px'; el.style.width = Math.min(300, r0.width - 72 - 68) + 'px';
+    if (bd) bd.style.maxHeight = Math.max(60, Math.round(r0.height * 0.25) - 64 - 48) + 'px';
+    return;
+  }
   var mr = map.getContainer().getBoundingClientRect(), A = { l: mr.left, t: mr.top, r: mr.right, b: mr.bottom };
   if (mr.width < 240 || mr.height < 180) A = { l: 0, t: 0, r: innerWidth, b: innerHeight };   /* no room on the map: use the screen */
   A = { l: Math.max(A.l, 0), t: Math.max(A.t, 0), r: Math.min(A.r, innerWidth), b: Math.min(A.b, innerHeight) };
@@ -3152,19 +3366,33 @@ function renderWhere(){
   var nearFrom = function(from){ var out = [], seen = {};
     listable().forEach(function(r){ var k = pinKey(r.seq); if (seen[k] || displayStatus(r.seq) !== 'pending' || String(r.seq) === String(cam)) return; var p = ll(r); if (!p) return;
       seen[k] = 1; out.push({ seq: String(r.seq), d: from.distanceTo(p) }); });
-    out.sort(function(x, y){ return x.d - y.d; }); return out.slice(0, 2); };
+    out.sort(function(x, y){ return x.d - y.d; }); return out.slice(0, 3); };
   var near = [], _camP = cam ? ll(_rowFor(cam)) : null;
   if (Gps && Gps.pos) near = nearFrom(L.latLng(Gps.pos));
   if ((!near.length || near[0].d > 24140) && (_camP || map)) near = nearFrom(_camP ? L.latLng(_camP) : map.getCenter());
   var _mi = function(m){ return m < 160 ? Math.round(m * 3.281) + ' ft' : (m / 1609.34).toFixed(m < 16000 ? 1 : 0) + ' mi'; };
   var blk = function(cls, k, seq, extra){ var p = _addrParts(seq); return '<div class="blk ' + cls + '" data-seq="' + esc(seq) + '" title="' + esc(p.st + ', ' + p.ct) + '"><span class="k">' + k + esc(seq) + '</span><span class="st">' + esc(p.st) + '</span><span class="ct">' + esc(extra || p.ct) + '</span></div>'; };
   var html = (cam ? blk('cam', '<svg class="camico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.6-2.2h6.8L17 7h3a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 20 19H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 7z" fill="#2ecc8a"/><circle cx="12" cy="12.8" r="3.9" fill="#0c1a34"/><circle cx="12" cy="12.8" r="2.3" fill="#2ecc8a"/></svg>', cam) : '') + (near.length ? '<span class="lbl">' + (Gps && Gps.pos ? 'Closest' : 'Nearest view') + '</span>' : '') +
-    '';   // the "next closest" chips are retired (Dustin 10/18: "retire the next closest parcels on the top ... just center the active parcel and make it a little bigger")
+    '';   // the "next closest" chips were retired 10/18 ("just center the active parcel and make it a little bigger")
   if (!cam && state.currentSeq && _rowFor(state.currentSeq)) html = blk('cam sel', '', state.currentSeq);   // no camera seq yet: the selected parcel holds the spot
+  /* desk-p67, BACK (Dustin 11/2: "add back in next closest parcels on the top ribbon on the map, so theyre easier to double
+     click, think we could fit two more up there comfortably"): the next 2 (3 on a wide map) open parcels beside the active
+     chip, in the white ring's order (best next first), with the distance from here; without a position, nearest first.
+     A tap selects; in the Kestrel app a double tap also locks it on the camera (the same as tapping its pin). */
+  var _rk = [], _shown = {}; _shown[String(cam || state.currentSeq || '')] = 1;
+  try { if (_dpOn() && _dpNext() && _dp.rank && _dp.rank.length) _rk = _dp.rank; } catch (e) {}
+  if (!_rk.length) _rk = near;
+  var _nN = ($('addrbanner').clientWidth || 0) > 900 ? 3 : 2;
+  _rk.filter(function(n){ var k = String(n.seq); if (_shown[k] || !_rowFor(k)) return false; _shown[k] = 1; return true; }).slice(0, _nN)
+    .forEach(function(n){ html += blk('near', '', n.seq, _mi(n.d)); });
   if (near.length) nx = near[0].seq;   // the closest not-taken parcel carries the NEXT pin label
   var ab = $('addrbanner'); ab.classList.remove('min'); var body = ab.querySelector('.ab-body');   // never minimized
   if (!body) { body = document.createElement('div'); body.className = 'ab-body'; body.style.cssText = 'display:flex;flex-wrap:nowrap;gap:6px;flex:1;min-width:0;overflow:hidden'; /* one line, always */ ab.insertBefore(body, ab.firstChild);
-    body.addEventListener('click', function(e){ var b = e.target.closest('.blk'); if (b) select(b.getAttribute('data-seq'), { pan: true }); }); }
+    body.addEventListener('click', function(e){ var b = e.target.closest('.blk'); if (!b) return; var s = b.getAttribute('data-seq'); if (!s) return;
+      select(s, { pan: true });
+      /* desk-p74: a double tap on any chip locks it on the camera (Kestrel app only; a laptop only selects); the first tap
+         re-draws the ribbon (the chip becomes the active one), so _appTapPair matches the pair by seq, not by chip */
+      _appTapPair(s); }); }
   if (body.getAttribute('data-h') !== html) { body.setAttribute('data-h', html); body.innerHTML = html || '<div class="blk"><span class="st">Nothing left on this list</span></div>'; }
   // pin labels: the selected, next and camera parcels carry their address on the map
   var want = {}; if (state.currentSeq) want[pinKey(state.currentSeq)] = 'sel'; if (nx) want[pinKey(nx)] = want[pinKey(nx)] || 'next'; if (cam) want[pinKey(cam)] = 'cam';   // a same-address group has one pin
@@ -3369,8 +3597,8 @@ if ('serial' in navigator) {
   navigator.serial.addEventListener('disconnect', function(e){ if (e.target === _gpsReading) _gpsReading = null; });
 }
 function startGeo(){
-  if (Gps.port || Gps.mock || Gps.geoWatch != null || !navigator.geolocation) return;
-  Gps.geoWatch = navigator.geolocation.watchPosition(function(p){ if (Gps.port || Gps.mock) return;
+  if (Gps.port || Gps.mock || Gps.app || Gps.geoWatch != null || !navigator.geolocation) return;
+  Gps.geoWatch = navigator.geolocation.watchPosition(function(p){ if (Gps.port || Gps.mock || Gps.app) return;
       Gps.pos = [p.coords.latitude, p.coords.longitude]; Gps.fixAt = Date.now(); Gps.src = 'Laptop location (±' + Math.round(p.coords.accuracy) + ' m)'; Gps.sats = null;
       Gps.course = p.coords.heading; Gps.speedKn = (p.coords.speed || 0) * 1.944; onPosition(); },
     function(){ renderPos(); }, { enableHighAccuracy: true, maximumAge: 5000 });
@@ -3506,7 +3734,7 @@ setInterval(function(){
     var mph = Math.round((Gps.speedKn || 0) * 1.1508), hdg = (Gps.course != null && isFinite(Gps.course)) ? Math.round(Gps.course) : null;
     var accM = /±\s*(\d+)/.exec(String(Gps.src || '')), acc = Gps.port ? (Gps.hdop ? Math.round(Gps.hdop * 5) : null) : (accM ? Number(accM[1]) : null);
     link.set('deskPos', { at: now, lat: Math.round(p[0] * 1e6) / 1e6, lng: Math.round(p[1] * 1e6) / 1e6, acc: acc, mph: mph, hdg: hdg,
-      src: Gps.port ? 'puck' : 'browser', fixAgeS: Math.round(age), build: DESK_BUILD }).catch(function(){});
+      src: Gps.port ? 'puck' : (Gps.app ? 'ipad' : 'browser'), fixAgeS: Math.round(age), build: DESK_BUILD }).catch(function(){});
     _deskPosLast = { p: p, at: now };
   } catch (e) {}
 }, 30000);
@@ -3527,6 +3755,7 @@ function renderPos(){
   try { renderMph(); } catch (e) {}
   var age = Gps.fixAt ? (Date.now() - Gps.fixAt) / 1000 : null, fresh = age != null && age < 10;
   $('pos-dot').textContent = fresh ? '●' : '○'; $('pos-dot').style.color = fresh ? 'var(--success)' : 'var(--warning)';
+  if (Gps.app && !fresh) { $('pos-h').textContent = Gps.pos ? 'iPad GPS · last fix ' + Math.round(age) + ' s ago' : 'No position yet'; $('pos-l2').textContent = 'Waiting for the iPad\'s GPS (Location: Always for Ledgerstone).'; return; }   /* desk-p66 */
   if (Gps.port && !fresh) { $('pos-h').textContent = 'GPS puck: searching for satellites'; $('pos-l2').textContent = (Gps.sats != null ? Gps.sats + ' satellites · ' : '') + (Gps.rateHz ? Gps.rateHz + ' fixes/s · ' : '') + 'keep the puck on the dash with a view of the sky.'; return; }
   if (!Gps.pos) { $('pos-h').textContent = 'No position yet'; $('pos-l2').textContent = Gps.port ? 'Waiting for the puck…' : 'Plug in the GPS puck and press Connect.'; return; }
   $('pos-h').textContent = (Gps.src || 'Position') + (fresh ? '' : ' · last fix ' + Math.round(age) + ' s ago');
@@ -3683,7 +3912,7 @@ function makeMinimizable(id, tabLabel){
   sp.addEventListener('dblclick', function(){ apply(0.25); try { localStorage.setItem('desk_split', '0.25'); } catch(x) {} });
 })();
 document.querySelectorAll('.stat').forEach(function(e){ e.onclick = function(){ setFilter(e.getAttribute('data-f')); }; });
-$('list').addEventListener('click', function(e){ var r = e.target.closest('.row'); if (r) select(r.getAttribute('data-seq'), { pan: true }); });
+$('list').addEventListener('click', function(e){ var r = e.target.closest('.row'); if (r) { select(r.getAttribute('data-seq'), { pan: true }); _appTapPair(r.getAttribute('data-seq')); } });   /* desk-p74: a double tap locks on the camera (Kestrel app only) */
 $('q').addEventListener('input', renderList); $('order').addEventListener('change', function(){ renderList(); $('list').scrollTop = 0; });   // a new order starts at its top (closest first)
 $('ship-btn').onclick = shipSession;
 $('gps-btn').onclick = function(){ gpsConnect(true); };
@@ -3719,6 +3948,8 @@ makeMinimizable('nav', '▸ Next parcel');
 makeMinimizable('addrbanner', '▸ Next address');
 makeMinimizable('pos', '◎ Position');
 makeMinimizable('tilebar', '▦ Map');
+try { if (window.LSNative && window.LSNative.app) { var _tt = $('tilebar').querySelector('.htab');   /* desk-p70: a square MAP button in the app's column */
+  if (_tt) _tt.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg><span class="ml">MAP</span>'; } } catch (e) {}
 makeMinimizable('route-slot', '↝ Route');
 // Only split or map-full-screen come back on load. The map is never hidden (Dustin 10/12: a stuck 'map hidden' is
 // a dead end, and nobody ever wants it), so an old remembered logmax/logmin falls back to split.
@@ -3870,7 +4101,7 @@ function rdSet(on){
   if (on && !_rdEnsure()) return;
   Rd.on = on;
   if (Rd.cap) Rd.cap.classList.toggle('on', on);
-  $('mapbtns').classList.toggle('rd-on', on);
+  $('mapbtns').classList.toggle('rd-on', on); if ($('rd-row')) $('rd-row').classList.toggle('rd-on', on);
   $('rd-pen').classList.toggle('on', on); $('rd-pen').setAttribute('aria-pressed', on ? 'true' : 'false');
   if (on && Rd.hidden) { Rd.hidden = false; _rdSaveLocal(); _rdDraw(); }
   _rdButtons();
@@ -3925,6 +4156,7 @@ function _cardActionHtml(seq){
 var ROUTE_TIGHT_W = 430, ROUTE_MIN_W = 210;
 function placeRouteSlot(){
   var el = $('route-slot'); if (!el || el.style.display === 'none') return;
+  if (window.LSNative && window.LSNative.app) { _appPlaceRoute(el); return; }   /* desk-p73: the app's own spot (below) */
   var ab = $('addrbanner'), mb = $('mapbtns'), mw = $('mapwrap'), top = 12, left = 56;
   if (mb && mb.offsetParent !== null) left = Math.max(left, mb.offsetLeft + mb.offsetWidth + 8);   // clear the ⇆ Split button too
   var maxW = Math.min(520, (mw ? mw.clientWidth : 600) - left - 12);
@@ -3942,6 +4174,38 @@ function placeRouteSlot(){
   el.style.maxWidth = Math.max(ROUTE_MIN_W, maxW) + 'px';
 }
 window.addEventListener('resize', placeRouteSlot);
+// desk-p73 KESTREL APP: THE ROUTE PANEL ON AN EDGE (Dustin 11/2 at desk-p72: "still not seeing routing directions").
+// The laptop rule above starts the box just right of #mapbtns; in the app that column moved to the bottom-right edge
+// (desk-p69), so the box opened past the right edge of the map, off screen. In the app the box docks to an edge and
+// never covers the middle half of the map (desk-p71):
+//   • bottom-left (landscape): beside the Ask Claude button, up to the open Map panel or the button column, its top no
+//     higher than 3/4 of the map. It shares that corner with the day card: one collapses when the other opens.
+//   • top (portrait, or whenever the bottom has no room): under the address chips, from the +/- to the right edge, its
+//     bottom no lower than 1/4 of the map.
+// The next turn is the second line, in big type; a longer box scrolls inside. Laptops never run this.
+var ROUTE_APP_MIN_W = 300, ROUTE_APP_MIN_H = 170;
+function _appPlaceRoute(el){
+  var mw = $('mapwrap'); if (!mw) return;
+  var W = mw.clientWidth, H = mw.clientHeight, base = mw.getBoundingClientRect(), band = Math.round(H * 0.25);
+  el.classList.remove('rt-tight'); el.classList.add('rt-app');
+  /* the bottom-left room: from beside the Ask Claude button to the open Map panel (or the button column) */
+  var bl = 76, br = _appBottomLimit();
+  var bw = Math.min(680, br - bl), bh = band - 12 - 4;
+  var corner = bw >= ROUTE_APP_MIN_W && bh >= ROUTE_APP_MIN_H ? 'bl' : 'top';
+  el._rtCorner = corner; el.setAttribute('data-corner', corner);
+  if (corner === 'bl') {
+    el.style.left = bl + 'px'; el.style.right = 'auto'; el.style.top = 'auto'; el.style.bottom = '12px';
+    el.style.width = bw + 'px'; el.style.maxWidth = bw + 'px'; el.style.maxHeight = bh + 'px';
+    return;
+  }
+  var top = 12, ab = $('addrbanner');
+  if (ab && ab.offsetParent !== null) ab.querySelectorAll('.blk,.htab').forEach(function(b){ if (b.offsetParent !== null) top = Math.max(top, Math.round(b.getBoundingClientRect().bottom - base.top) + 8); });
+  var tw = Math.min(520, W - 72 - 12);
+  el.style.left = '72px'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.top = top + 'px';
+  el.style.width = tw + 'px'; el.style.maxWidth = tw + 'px'; el.style.maxHeight = Math.max(120, band - top - 4) + 'px';
+}
+/* the box is open in the shared bottom-left corner (the day card stays collapsed out of the way while it is) */
+function _appRouteInCorner(){ var el = $('route-slot'); return !!(el && el.style.display !== 'none' && !el.classList.contains('min') && el._rtCorner === 'bl'); }
 var DeskAPI = window.DeskAPI = {
   version: 1,
   map: function(){ return map; },                    // the Leaflet map (draw your own layers on it)
@@ -3958,7 +4222,16 @@ var DeskAPI = window.DeskAPI = {
   onRender: function(fn){ _renderHooks.push(fn); },   // after every redraw (statuses changed)
   onPosition: function(fn){ _posHooks.push(fn); },    // every GPS fix
   setNextProvider: function(fn){ _nextProvider = fn; renderAll(); },   // fn() → seq string, null, or undefined (= use the desk's own)
-  slot: function(show){ var el = $('route-slot'); el.style.display = show === false ? 'none' : ''; placeRouteSlot(); return $('route-slot-body'); },   // a minimizable map panel to render into (false hides it)
+  slot: function(show){ var el = $('route-slot');
+    if (show !== false && el.style.display === 'none' && window.LSNative && window.LSNative.app) el.classList.remove('min');   /* desk-p73: a route he just started opens, never as a leftover tab */
+    el.style.display = show === false ? 'none' : ''; placeRouteSlot(); try { if (window.LSNative && window.LSNative.app) _appEdges(); } catch (e) {} return $('route-slot-body'); },
+  fitPad: function(){   /* desk-p73: route.js's fitBounds padding; the app keeps the whole route clear of its docked box */
+    var el = $('route-slot'), mw = $('mapwrap');
+    if (!(window.LSNative && window.LSNative.app) || !el || !mw || el.style.display === 'none') return { paddingTopLeft: [70, 280], paddingBottomRight: [40, 150] };
+    var b = el.getBoundingClientRect(), m = mw.getBoundingClientRect();
+    if (el._rtCorner === 'bl') return { paddingTopLeft: [72, 80], paddingBottomRight: [76, Math.round(m.bottom - b.top) + 12] };
+    return { paddingTopLeft: [72, Math.round(b.bottom - m.top) + 12], paddingBottomRight: [76, 40] };
+  },   // a minimizable map panel to render into (false hides it)
   roads: function(){   // → Promise: this county's road file (parsed) or null. Read only when asked.
     var b = state.job && state.job.bucket; if (!b) return Promise.resolve(null);
     return Promise.resolve(_roadsPending[b]).then(function(){ return DB.get('kv', 'roads:' + b); })
@@ -3976,6 +4249,429 @@ function loadRouteModule(){
   s.onerror = function(){ toast('Route module not found (desk/route.js)', 5000); };
   document.head.appendChild(s);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// 15. KESTREL TAP-TO-LOCK (desk-p65, Dustin 11/2: "test the click and lock from the map, completely eliminating the
+//     need for user voice"). ONLY inside the Kestrel app (window.LSNative.app); a laptop never runs any of this.
+// desk-p74 (Dustin 11/2: "single click is also changing the camera, where it should be a double click locks it and calls
+//   it, we dont need it to call out every seq we touch, just the ones we lock"): ONE tap on a pin, a list row or a ribbon
+//   chip only SELECTS (card, pin); nothing goes to the camera and nothing is spoken. TWO taps on the same parcel within
+//   APP_DBL_MS (our own timing, not dblclick) LOCK it, the same as the card's 🔒 Lock. The camera announces the lock.
+//   Auto-lock by closeness is unchanged.
+//   • LOCK (double tap / 🔒 Lock) = { t:'lock', seq, parcelId, address,
+//     at, id } over the direct phone-iPad link (LSNative.link), and the same lock through the server
+//     (sessions/<DRV>/appLock) for when the link is down but there is signal. The camera checks it against its own
+//     list, locks it, shows the address big, and answers (lockAck) on the link and the server (appLockAck).
+//   • The map says what happened: "Locked on camera: SEQ 45 · 123 Main St", the camera's reason when it refuses
+//     ("finish seq 44 first: press STOP"), or "Camera not connected" when no answer comes in 3 s.
+//   • STOP on the camera sends { t:'closed', seq, parcelId, shots, at }: the pin turns at once, laid over the server's
+//     copy exactly like a real close (closed + shotCount) until the server's own close lands. Start of retiring purple.
+//   Press-and-hold (purple) and the zoom rules are untouched: a hold swallows its click, so it never sends a lock.
+// desk-p66 (Dustin 11/2, live test on his iPad):
+//   • NVFR on the parcel card ("now that we are going on no spoken driver commands"; then "i dont want to close parcels
+//     with no photos nvfr though"): a MARK sent to the camera ({ t:'nvfr', seq, on }) for the parcel it has locked (a
+//     parcel it is not on is locked first, like a tap). The camera's STOP closes it as NVFR with the photos shot from the
+//     road; the map never writes a close. "Lock on camera" on the card sends the same lock as a tap.
+//   • GPS = the iPad's own (LSNative.gps.watch) from the moment the map opens; no puck, no Connect GPS button.
+//   • The laptop setup card, folder pickers, "Load drive file", puck controls and laptop wording are off on the app.
+// ════════════════════════════════════════════════════════════════════════════
+var AppLock = { cur: null, t: null, seenAck: {}, ackOrder: [], closes: {}, closesKey: '', log: [], nvfr: {}, nv: null,
+  camLocked: null, closedSeq: {}, auto: { cand: null, since: 0, block: {}, quietUntil: 0, last: null, ambigAt: 0, why: '' },
+  autoCfg: { maxM: 150, ratio: 0.5, gapShare: 0.5, mph: 5, dwellMs: 2500 } };
+function _inApp(){ return !!(window.LSNative && window.LSNative.app); }
+function _appOn(){ return !!(window.LSNative && window.LSNative.app && window.LSNative.link) && !LOOK; }
+function _appNote(s){ AppLock.log.push(new Date().toLocaleTimeString() + ' ' + s); if (AppLock.log.length > 30) AppLock.log.shift(); try { console.log('[desk] app lock: ' + s); } catch (e) {} }
+function _appPid(v){ return String(v || '').toUpperCase().replace(/\s#\d+\s*$/, '').replace(/[^A-Z0-9]/g, ''); }
+function _appChip(kind, text){
+  var el = $('al-chip');
+  if (!el) { el = document.createElement('div'); el.id = 'al-chip'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); ($('mapwrap') || document.body).appendChild(el); }
+  el.className = 'al-' + kind; el.textContent = text; el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(function(){ el.style.display = 'none'; }, kind === 'wait' ? 8000 : 6000);
+}
+/* desk-p74: every tap on a pin, a stacked-spot row, a list row or a ribbon chip comes here after select(); the second tap
+   on the same parcel within APP_DBL_MS locks it (→ true). A first tap is only a select (→ false) and sends nothing. */
+var APP_DBL_MS = 360, _appTap2 = { seq: null, at: 0 };
+function _appTapPair(seq){
+  if (!_appOn() || seq == null) return false;
+  var s = String(seq), now = Date.now(), dbl = _appTap2.seq === s && now - _appTap2.at <= APP_DBL_MS;
+  _appTap2 = dbl ? { seq: null, at: 0 } : { seq: s, at: now };
+  if (dbl) { _appTapLock(s); return true; }
+  return false;
+}
+/* a lock: the double tap above or the card's 🔒 Lock (never a single tap, never the camera following, never a key) */
+function _appTapLock(seq, opt){
+  try {
+    opt = opt || {};
+    if (!_appOn() || !state.job) return null;
+    var r = _rowFor(seq); if (!r) return null;
+    var id = 'L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    var addr = [r.street, r.city].filter(Boolean).join(', ');
+    /* at only grows: the camera drops a tap no newer than the last one it handled (two quick taps in one ms stay two) */
+    var at = Math.max(Date.now(), (AppLock.lastAt || 0) + 1); AppLock.lastAt = at;
+    var msg = { t: 'lock', seq: String(r.seq), parcelId: String(r.parcelId || ''), address: addr, at: at, id: id };
+    if (opt.auto) msg.auto = true;   /* desk-p70: the camera takes an auto-lock only when nothing is locked there */
+    try { Promise.resolve(window.LSNative.link.send(msg)).catch(function(){}); } catch (e) {}
+    try { if (link && link.set) link.set('appLock', { seq: msg.seq, parcelId: msg.parcelId, at: msg.at, id: id }).catch(function(){}); } catch (e) {}
+    AppLock.cur = { id: id, seq: msg.seq, addr: r.street || addr, at: msg.at, st: 'wait', auto: !!opt.auto };
+    if (!opt.auto) _appChip('wait', 'Locking SEQ ' + msg.seq + ' on the camera…');
+    clearTimeout(AppLock.t);
+    AppLock.t = setTimeout(function(){ var c = AppLock.cur; if (c && c.id === id && c.st === 'wait' && c.auto) { c.st = 'noack'; return; }
+      if (c && c.id === id && c.st === 'wait') { c.st = 'noack'; _appChip('bad', 'Camera not connected: SEQ ' + c.seq + ' is not locked'); _appNote('no answer for SEQ ' + c.seq); } }, 3000);
+    _appNote('tap SEQ ' + msg.seq + ' sent');
+    return msg;
+  } catch (e) { console.warn('app lock', e); return null; }
+}
+/* the camera's answer, from the link or the server (whichever is first; the other copy is dropped) */
+function _appAckIn(a, via){
+  if (!a || a.t !== 'lockAck' || !a.id) return;
+  var id = String(a.id); if (AppLock.seenAck[id]) return;
+  AppLock.seenAck[id] = 1; AppLock.ackOrder.push(id); if (AppLock.ackOrder.length > 200) delete AppLock.seenAck[AppLock.ackOrder.shift()];
+  var c = AppLock.cur; if (!c || c.id !== id) return;   /* the answer to an older tap: the newest tap owns the chip */
+  clearTimeout(AppLock.t); c.st = a.ok ? 'ok' : 'no';
+  if (c.auto) {   /* desk-p70: the camera chose to take it (nothing was locked there) or not; a refusal is quiet */
+    if (a.ok) _appChip('auto', 'Auto-locked SEQ ' + (a.seq || c.seq) + ' · ' + (String(a.address || '').split(',')[0] || c.addr || '(no address)') + ' (closest)');
+    else { AppLock.auto.quietUntil = Date.now() + 15000; delete AppLock.auto.block[String(c.seq)]; }
+    _appNote('auto-lock SEQ ' + c.seq + ' ' + (a.ok ? 'taken' : 'refused: ' + a.why)); return;
+  }
+  if (a.ok) _appChip('ok', 'Locked on camera: SEQ ' + (a.seq || c.seq) + ' · ' + (String(a.address || '').split(',')[0] || c.addr || '(no address)'));
+  else _appChip('bad', 'Camera did not lock SEQ ' + (a.seq || c.seq) + ': ' + (a.why || 'refused'));
+  _appNote('answer SEQ ' + (a.seq || c.seq) + ' ' + (a.ok ? 'locked' : 'refused: ' + a.why) + ' (' + via + ')');
+}
+// ── a close heard from the camera, before the server's copy ──
+function _appClosesLoad(){
+  var k = 'desk_appcloses_' + String((state.job && state.job.bucket) || '') + '_' + _lhvDate();
+  if (AppLock.closesKey === k) return; AppLock.closesKey = k; AppLock.closes = {};
+  try { AppLock.closes = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) {}
+}
+function _appClosesSave(){ try { if (AppLock.closesKey) localStorage.setItem(AppLock.closesKey, JSON.stringify(AppLock.closes)); } catch (e) {} }
+function _appClosedIn(m){
+  if (!m || m.t !== 'closed' || m.seq == null || !state.job) return;
+  var r = _rowFor(m.seq); if (!r) return;
+  if (m.parcelId && r.parcelId && _appPid(m.parcelId) !== _appPid(r.parcelId)) { _appNote('close for SEQ ' + m.seq + ' is another parcel: ignored'); return; }
+  var at = Number(m.at) || Date.now(); if (Date.now() - at > 12 * 3600000) return;
+  _appClosesLoad();
+  AppLock.closes[String(r.seq)] = { at: at, shots: Number(m.shots) || 0, pid: String(r.parcelId || ''), nvfr: !!m.nvfr };
+  delete AppLock.nvfr[String(r.seq)];
+  AppLock.closedSeq[String(r.seq)] = Date.now(); if (AppLock.camLocked === String(r.seq)) AppLock.camLocked = null;
+  _appClosesSave(); rebuildLogs(); renderAll();
+  toast('✓ SEQ ' + r.seq + ' closed on the camera' + (m.nvfr ? ' as NVFR' : '') + (m.shots ? ' · ' + m.shots + ' photo' + (m.shots === 1 ? '' : 's') : ''), 2200);
+  _appNote('closed SEQ ' + r.seq + ' (' + (Number(m.shots) || 0) + ' shots)');
+}
+/* rebuildLogs: lay each camera close over the server snapshot the way a real close reads (closed, closedAt, shotCount,
+   today's driveDate), until the server's own close is there */
+function _appClosesApply(out){
+  if (!_appOn() || !state.job) return; _appClosesLoad();
+  var dirty = false;
+  Object.keys(AppLock.closes).forEach(function(k){
+    var c = AppLock.closes[k], l = out[k];
+    if (l && l.closed && !l.appClose) { delete AppLock.closes[k]; dirty = true; return; }   /* the server close landed */
+    l = out[k] || (out[k] = { seq: k });
+    l.closed = true; l.closedAt = c.at; l.appClose = true;
+    l.shotCount = Math.max(Number(l.shotCount || 0), Number(c.shots || 0));
+    if (!l.driveDate) l.driveDate = _lhvDate();
+    if (c.pid && !l.parcelId) l.parcelId = c.pid;
+    if (c.nvfr) { l.build = 'NVFR'; l.unoccupied = 'NVFR'; }
+  });
+  if (dirty) _appClosesSave();
+}
+function _appLinkIn(m){
+  try {
+    if (!m || !m.t) return;
+    if (m.t === 'state') _appCamState(m);
+    else if (m.t === 'lockAck') _appAckIn(m, 'link');
+    else if (m.t === 'nvfrAck') _appNvfrAckIn(m);
+    else if (m.t === 'closed') _appClosedIn(m);
+  } catch (e) { console.warn('app link message', e); }
+}
+// ── the card's two app buttons ──
+function _appCardActs(seq, l, pc, shot, locked){
+  if (!_appOn()) return '';
+  var h = '', closedPics = l.closed && (pc > 0 || shot > 0), mk = !!AppLock.nvfr[String(seq)];
+  if (!locked && !closedPics) h += '<button class="act" id="b-lock" title="Lock this parcel on the camera" aria-label="Lock on camera"><span>🔒 Lock</span></button>';
+  if (!locked && !l.closed)   /* a mark for the camera's STOP; never a close */
+    h += '<button class="act" id="b-nvfr" title="' + (mk ? 'Clear the NVFR mark' : 'Not visible from the road: mark it on the camera; STOP closes it with the photos') + '"><span>' + (mk ? 'NVFR ✓' : 'NVFR') + '</span></button>';
+  return h;
+}
+/* NVFR from the card (Dustin 11/2: "i dont want to close parcels with no photos nvfr though"): a MARK on the parcel the
+   camera has locked, never a close. A parcel the camera is not on is locked first (the same as a tap); the camera marks
+   it, and its STOP closes it as NVFR with the photos shot from the road. A second press clears the mark. */
+function _appNvfr(seq){
+  if (!_appOn()) return null;
+  var r = _rowFor(seq); if (!r) return null;
+  var s = String(r.seq), on = !AppLock.nvfr[s];
+  if (on && !(AppLock.cur && AppLock.cur.seq === s && AppLock.cur.st === 'ok')) _appTapLock(s);   /* lock it first */
+  var id = 'N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  var msg = { t: 'nvfr', seq: s, parcelId: String(r.parcelId || ''), on: on, at: Date.now(), id: id };
+  try { Promise.resolve(window.LSNative.link.send(msg)).catch(function(){}); } catch (e) {}
+  AppLock.nv = { id: id, seq: s, on: on, st: 'wait' };
+  clearTimeout(AppLock.nvT);
+  AppLock.nvT = setTimeout(function(){ var c = AppLock.nv; if (c && c.id === id && c.st === 'wait') { c.st = 'noack'; _appChip('bad', 'Camera not connected: NVFR not ' + (on ? 'marked' : 'cleared') + ' on SEQ ' + s); } }, 3500);
+  _appNote('NVFR ' + (on ? 'mark' : 'clear') + ' SEQ ' + s + ' sent');
+  return msg;
+}
+function _appNvfrAckIn(a){
+  if (!a || a.t !== 'nvfrAck' || !a.id) return;
+  var c = AppLock.nv; if (!c || c.id !== String(a.id)) return;
+  clearTimeout(AppLock.nvT); c.st = a.ok ? 'ok' : 'no';
+  if (a.ok) { if (a.on) AppLock.nvfr[c.seq] = 1; else delete AppLock.nvfr[c.seq];
+    _appChip('ok', a.on ? 'NVFR marked on camera: SEQ ' + c.seq + ' · shoot from the road, STOP closes it' : 'NVFR cleared on SEQ ' + c.seq); }
+  else _appChip('bad', 'Camera did not mark SEQ ' + c.seq + ' NVFR: ' + (a.why || 'refused'));
+  try { renderAll(); } catch (e) {}
+  _appNote('NVFR answer SEQ ' + c.seq + ' ' + (a.ok ? 'ok' : 'refused: ' + a.why));
+}
+// ── desk-p70 AUTO-LOCK (Dustin 11/2: "can we add a lock when close if no seq number has been locked by touch"; then
+//    "40 m, is that going to be wide of a lock when we are in urban areas?"). With nothing locked on the camera, the
+//    driver slow (under 5 mph) or stopped for 2.5 s, and ONE open parcel clearly the closest, the map locks it on the
+//    camera ("Auto-locked SEQ 45 · address (closest)", sky blue, not the tap's green). Distance = the iPad's position to
+//    the parcel's OUTLINE (0 inside it; its point when it has no outline). Clearly closest = nearest <= 0.5 x the second
+//    nearest open parcel AND nearest <= 0.5 x the typical gap between neighbouring open parcels around him, never past
+//    150 m: about 8-10 m on a town block; far in the country ("sometimes we shoot from farther away to give clients a
+//    good look at the whole parcel"). Two close ones = no lock, "Two parcels here: tap one". A batch
+//    locks its pin, the same as a tap on that spot. Never when the camera has a lock or unSTOPped shots (the camera
+//    refuses an auto-lock then), never a parcel closed or unlocked by hand in the last 10 min. A tap always wins.
+function _appCamState(m){
+  var was = AppLock.camLocked, now = m && m.locked ? String(m.locked) : null;
+  AppLock.camLocked = now;
+  /* a lock that ended without a close = unlocked by hand (scratch / replaced): not auto-locked again for 10 min */
+  if (was && was !== now && !(AppLock.closedSeq[was] && Date.now() - AppLock.closedSeq[was] < 60000)) AppLock.auto.block[was] = Date.now();
+}
+function _appXY(p, o){ return [(p[1] - o[1]) * Math.cos(o[0] * Math.PI / 180) * 111320, (p[0] - o[0]) * 110540]; }
+function _appSegD(px, py, ax, ay, bx, by){ var dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2)) : 0;
+  var x = ax + t * dx - px, y = ay + t * dy - py; return Math.sqrt(x * x + y * y); }
+/* metres from pos to a row's outline (0 inside), else to its point */
+function _appDistTo(pos, r){
+  var b = null; try { b = boundsFor(r.seq); } catch (e) {}
+  if (b && b.rings && b.rings.length) {
+    var best = Infinity;
+    b.rings.forEach(function(ring){
+      var pts = ring.map(function(c){ return _appXY(c, pos); }), inside = false;
+      for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        var xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+        if (((yi > 0) !== (yj > 0)) && (0 < (xj - xi) * (0 - yi) / ((yj - yi) || 1e-12) + xi)) inside = !inside;
+        best = Math.min(best, _appSegD(0, 0, xj, yj, xi, yi));
+      }
+      if (inside) best = 0;
+    });
+    if (isFinite(best)) return best;
+  }
+  var p = ll(r); if (!p) return Infinity; var xy = _appXY(p, pos); return Math.sqrt(xy[0] * xy[0] + xy[1] * xy[1]);
+}
+/* the open stops around pos, nearest first: one per pin (a batch is one stop), and the typical gap between them */
+function _appNearby(pos){
+  var by = {}, pts = [];
+  listable().forEach(function(r){
+    if (displayStatus(r.seq) !== 'pending') return;
+    var p = ll(r); if (!p) return; var xy = _appXY(p, pos); if (xy[0] * xy[0] + xy[1] * xy[1] > 400 * 400) return;
+    var k = pinKey(r.seq), dd = _appDistTo(pos, r);
+    if (!by[k] || dd < by[k].d) by[k] = { seq: k, d: dd, xy: by[k] ? by[k].xy : xy };
+  });
+  var list = Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return a.d - b.d; });
+  /* typical gap: the median distance from each of the nearest open stops to its own nearest open neighbour */
+  var near = list.slice(0, 10), nn = [];
+  near.forEach(function(a){ var m = Infinity; list.forEach(function(b){ if (b === a) return; var dx = a.xy[0] - b.xy[0], dy = a.xy[1] - b.xy[1]; m = Math.min(m, Math.sqrt(dx * dx + dy * dy)); }); if (isFinite(m)) nn.push(m); });
+  nn.sort(function(a, b){ return a - b; });
+  return { list: list, gap: nn.length ? nn[Math.floor(nn.length / 2)] : Infinity };
+}
+/* the decision for one position: { seq } to lock, { ambiguous: [a, b] }, or null */
+function _appAutoPick(pos){
+  var C = AppLock.autoCfg, n = _appNearby(pos), L0 = n.list;
+  if (!L0.length) return null;
+  var a = L0[0], b = L0[1], d2 = b ? b.d : Infinity, limit = Math.min(C.maxM, C.gapShare * n.gap);
+  if (a.d <= limit && a.d <= C.ratio * d2) return { seq: a.seq, d: a.d, limit: limit };
+  if (b && a.d <= 1.5 * limit && b.d <= 1.5 * limit) return { ambiguous: [a.seq, b.seq], d: a.d, limit: limit };
+  return null;
+}
+function _appAutoTick(){
+  var A = AppLock.auto, C = AppLock.autoCfg, now = Date.now();
+  if (!_appOn() || !state.job || !Gps.app || !Gps.pos) return null;
+  var pos = [Gps.pos[0], Gps.pos[1]], mph = Gps.speedKn > 0 ? Gps.speedKn * 1.1508 : 0;
+  if (!(Gps.speedKn > 0) && A.last) { var dt = (now - A.last.t) / 1000; if (dt > 0.3) { var xy = _appXY(pos, A.last.p); mph = Math.sqrt(xy[0] * xy[0] + xy[1] * xy[1]) / dt * 2.237; } }
+  A.last = { p: pos, t: now };
+  if (AppLock.camLocked || _camOpen || now < A.quietUntil || (AppLock.cur && AppLock.cur.st === 'wait')) { A.cand = null; A.why = 'camera busy'; return null; }
+  if (mph >= C.mph) { A.cand = null; A.why = 'moving'; return null; }
+  var pick = _appAutoPick(pos);
+  if (!pick) { A.cand = null; A.why = 'nothing clearly closest'; return null; }
+  if (pick.ambiguous) { A.cand = null; A.why = 'two close';
+    if (now - A.ambigAt > 20000) { A.ambigAt = now; _appChip('auto', 'Two parcels here: tap one (SEQ ' + pick.ambiguous[0] + ' or ' + pick.ambiguous[1] + ')'); }
+    return null; }
+  var k = pick.seq;
+  if (A.block[k] && now - A.block[k] < 10 * 60000) { A.cand = null; A.why = 'blocked'; return null; }
+  if (A.cand !== k) { A.cand = k; A.since = now; A.why = 'waiting'; return null; }
+  if (now - A.since < C.dwellMs) return null;
+  A.cand = null; A.block[k] = now; A.why = 'sent';
+  _appNote('auto-lock SEQ ' + k + ' (' + Math.round(pick.d) + ' m, limit ' + Math.round(pick.limit) + ' m)');
+  return _appTapLock(k, { auto: true });
+}
+// ── desk-p69: the map's buttons in one column at the bottom right, over the Map panel (its top moves when it is
+//    minimized, so the column follows it); clear of the panel, the list and the card. Laptops: untouched. ──
+/* desk-p78: the x (from the map's left) where the bottom-left panels must stop: just before the bottom row of buttons
+   (MAP, Center on me, the mph pill when it shows) or the open Map panel, whichever reaches further left */
+function _appBottomLimit(){
+  var mw = $('mapwrap'); if (!mw) return 0; var L0 = mw.getBoundingClientRect().left, x = mw.clientWidth - 12 - 48 - 8;
+  ['tilebar', 'me-btn', 'mph'].forEach(function(id){ var e = $(id); if (e && e.offsetParent !== null && e.offsetWidth) x = Math.min(x, Math.round(e.getBoundingClientRect().left - L0) - 8); });
+  return x;
+}
+/* desk-p79: the bottom offset (px from the map's bottom) just above the ⏱ button, where the ⏱ / 🏁 cards open */
+function _appAboveClock(){
+  var mw = $('mapwrap'), b = $('dp-day') && $('dp-day').offsetParent ? $('dp-day') : ($('dp-end') && $('dp-end').offsetParent ? $('dp-end') : $('tilebar'));
+  if (!mw || !b) return 140;
+  return Math.round(mw.getBoundingClientRect().bottom - b.getBoundingClientRect().top) + 8;
+}
+function _appPlaceCtl(){
+  try {
+    if (!_inApp() || !map) return;
+    var mw = $('mapwrap'), tb = $('tilebar'), zc = map.getContainer().querySelector('.leaflet-top.leaflet-left'), mb = $('mapbtns');
+    if (!mw || !zc || !mb) return;
+    /* desk-p70: ONE column on one right edge, bottom up: the Map panel (a 48 px MAP square when minimized), 🏁, ⏱, the
+       pen / full map / GPS stack, then +/-; 8 px apart; nothing else decides where these sit in the app */
+    var G = 8, R = '12px', y = 26, put = function(el){ if (!el) return; el.style.left = 'auto'; el.style.top = 'auto'; el.style.right = R; el.style.bottom = y + 'px'; };
+    /* important: ask.js lifts the panel to 56 px for the laptop's GPS bar, which the app does not have */
+    if (tb) { tb.style.setProperty('right', R, 'important'); tb.style.setProperty('bottom', y + 'px', 'important'); }
+    /* desk-p78: Center on me sits left of the Map button on the bottom row; the pen above Ask Claude (bottom-left);
+       full map / split alone in the top-right corner */
+    var me = $('me-btn'), rr = $('rd-row');
+    if (me && me.parentNode !== mw) mw.appendChild(me);
+    if (rr && rr.parentNode !== mw) mw.appendChild(rr);
+    var meR = 12 + ((tb && tb.offsetWidth) || 48) + G;
+    if (me) { me.style.left = 'auto'; me.style.top = 'auto'; me.style.bottom = y + 'px'; me.style.right = meR + 'px'; }
+    /* the mph pill (ask.js lifts it out of the GPS bar to the bottom-left, under the route box): left of Center on me */
+    var mp = $('mph'); if (mp) { mp.style.setProperty('left', 'auto', 'important'); mp.style.setProperty('top', 'auto', 'important');
+      mp.style.setProperty('bottom', y + 'px', 'important'); mp.style.setProperty('right', (meR + 48 + G) + 'px', 'important'); }
+    if (rr) { rr.style.right = 'auto'; rr.style.top = 'auto'; rr.style.left = '15px'; rr.style.bottom = (10 + 58 + G) + 'px'; }
+    y += ((tb && tb.offsetHeight) || 0) + G;
+    ['dp-end', 'dp-day'].forEach(function(id){ var e = $(id); if (e && e.offsetParent) { put(e); y += e.offsetHeight + G; } });
+    mb.style.left = 'auto'; mb.style.bottom = 'auto'; mb.style.right = R; mb.style.top = '12px';
+    /* desk-p71: +/- back in Leaflet's own top-left spot */
+    zc.style.top = ''; zc.style.left = ''; zc.style.right = ''; zc.style.bottom = '';
+    _appEdges();
+  } catch (e) {}
+}
+setInterval(_appPlaceCtl, 1000); window.addEventListener('resize', function(){ setTimeout(_appPlaceCtl, 50); });
+// ── desk-p68 CENTER ON ME (Dustin 11/2: "still need a center on gps toggle"): a button at the top of the bottom-right
+//    column. A tap pans to the iPad's position and keeps him centred as he moves (the same follow the laptop's
+//    "◎ Center on GPS" uses); a hand pan turns it off. It only ever PANS: the zoom stays where the driver put it.
+//    The fix's accuracy shows as a faint ring around the position. ──
+var _meAcc = null;
+function _appMeSync(){ var b = $('me-btn'); if (b) { b.classList.toggle('on', !!_followMe); b.classList.toggle('nofix', !Gps.pos); b.setAttribute('aria-pressed', _followMe ? 'true' : 'false'); } }
+function _appMeBtn(){
+  if (!_inApp() || $('me-btn') || !$('mapbtns')) return;
+  var b = document.createElement('button'); b.className = 'wbtn'; b.id = 'me-btn'; b.title = 'Center on me: keep the map on your position (pan only, never zooms)';
+  b.setAttribute('aria-label', 'Center on me'); b.setAttribute('aria-pressed', 'false');
+  b.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg><span class="me-l">GPS</span>';
+  b.onclick = function(e){ e.stopPropagation();
+    if (!Gps.pos) { toast('Waiting for the iPad\'s GPS. Location must be set to Always for Ledgerstone.', 3000); return; }
+    toggleFollow(); _appMeSync(); };
+  $('mapbtns').insertBefore(b, $('mapbtns').firstChild);
+}
+function _appMeAcc(){
+  try {
+    if (!_inApp() || !map || !Gps.pos) return;
+    var acc = Number(Gps.acc || 0);
+    if (!(acc > 0) || Date.now() - (Gps.fixAt || 0) > 30000) { if (_meAcc) { map.removeLayer(_meAcc); _meAcc = null; } return; }
+    if (!_meAcc) _meAcc = L.circle(Gps.pos, { radius: acc, interactive: false, color: '#4f9bff', weight: 1, opacity: 0.6, fillColor: '#4f9bff', fillOpacity: 0.12 }).addTo(map);
+    else { _meAcc.setLatLng(Gps.pos); _meAcc.setRadius(acc); }
+  } catch (e) {}
+}
+setInterval(function(){
+  /* desk-p69: the iPad's GPS starts as soon as there is a map, whichever way the county opened (not only at its boot) */
+  try { if (_inApp() && !MOCK && map && !Gps.appStop) _appGpsStart(); } catch (e) {}
+  _appMeBtn(); _appMeSync(); _appMeAcc(); }, 1000);
+// ── desk-p71 THE MIDDLE STAYS OPEN (Dustin 11/2: "id like to keep the mid screen functional for still seeing if youre
+//    driving by stuff"). Nothing sits over the middle half of the map (the box from 25% to 75% of its width and height);
+//    every panel lives in an edge band: top (ribbon, chips, the lock confirmation, the stacked-spot list), left (zoom),
+//    right (the button column), bottom (the day card, the aerial, Ask Claude, the toast). Heights are capped to the band,
+//    and a longer panel scrolls inside. The day card (⏱ / 🏁) docks bottom-left, collapses to one line, stays open across
+//    parcels until closed; in portrait it starts collapsed. ──
+function _appEdges(){
+  try {
+    if (!_inApp() || !map) return;
+    var mw = $('mapwrap'); if (!mw) return;
+    var W = mw.clientWidth, H = mw.clientHeight, narrow = W < 700, band = Math.round(H * 0.25);
+    try { placeRouteSlot(); } catch (e) {}   /* desk-p73: the route box follows the Map panel and the chips */
+    /* desk-p79: the ⏱ / 🏁 cards open above the clock (right edge), so they no longer share the route box's corner */
+    if (!window._rtShare) { window._rtShare = true;
+      document.addEventListener('click', function(e){ if (e.target && e.target.closest && e.target.closest('#route-slot,#dp-day,#dp-end')) setTimeout(_appEdges, 0); }, true); }
+    var dc = $('dp-daycard'), d = $('k-dock');
+    if (dc && !d) {
+      d = document.createElement('div'); d.id = 'k-dock'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Today');
+      d.innerHTML = '<div class="kd-h"><span class="kd-t"></span><button class="kd-c" type="button" aria-label="Collapse">▾</button><button class="kd-x" type="button" aria-label="Close">✕</button></div><div class="kd-b"></div>';
+      mw.appendChild(d); d.querySelector('.kd-b').appendChild(dc);
+      ['click', 'dblclick', 'pointerdown', 'mousedown', 'wheel', 'touchstart'].forEach(function(ev){ d.addEventListener(ev, function(e){ e.stopPropagation(); }, { passive: ev !== 'wheel' }); });
+      d.querySelector('.kd-c').onclick = function(){ var k = 'k_dock_col_' + (mw.clientWidth < 700 ? 'p' : 'l'), c = !d.classList.contains('col');
+        try { localStorage.setItem(k, c ? '1' : '0'); } catch (e) {} _appEdges(); };
+      d.querySelector('.kd-x').onclick = function(){ var b = $('dp-day'); if (b && b.classList.contains('on')) b.click(); setTimeout(_appEdges, 0); };
+    }
+    var ask = $('askc-pop'), askOpen = !!(ask && ask.style.display === 'block');
+    if (d) {
+      var open = !!($('dp-day') && $('dp-day').classList.contains('on'));
+      d.classList.toggle('on', open);
+      var pref = null; try { pref = localStorage.getItem('k_dock_col_' + (narrow ? 'p' : 'l')); } catch (e) {}
+      var picking = !!($('dp-chip') && $('dp-chip').style.display === 'block');   /* the end-point picker needs the room: one line while it is up */
+      var col = picking || (pref == null ? narrow : pref === '1'); d.classList.toggle('col', col);
+      d.querySelector('.kd-c').textContent = col ? '▸' : '▾'; d.querySelector('.kd-c').setAttribute('aria-label', col ? 'Open' : 'Collapse');
+      /* desk-p79 (Dustin 11/2: "pace card and finish line should open small cards above the clock logo how it was before";
+         the routing box covered them): a small card on the right edge, its bottom just above ⏱, under the top ribbon */
+      var dw0 = Math.min(300, W - 24), up = _appAboveClock(), room = H - up - 76;
+      d.style.left = 'auto'; d.style.right = '12px'; d.style.bottom = up + 'px'; d.style.width = dw0 + 'px';
+      d.style.maxHeight = Math.max(44, Math.min(Math.round(H * 0.5), room)) + 'px';
+      d.querySelector('.kd-b').style.maxHeight = Math.max(0, Math.min(Math.round(H * 0.5), room) - 42) + 'px';
+      var i = _dp && _dp.info, e = _dpEnd(), bits = [];
+      bits.push(e ? '🏁 ' + (e.label || 'Day end') : '⏱ Today');
+      if (i && i.until != null) bits.push('work until ' + _dpHm(i.until));
+      if (i) bits.push(i.left + ' left');
+      if (i && e && i.toEnd) bits.push(Math.round(i.toEnd) + ' min to end');
+      var t = bits.join(' · '); if (d.querySelector('.kd-t').textContent !== t) d.querySelector('.kd-t').textContent = t;
+    }
+    /* the end-point picker (🏁): the same corner, above the day card when both are up */
+    var ch = $('dp-chip');
+    if (ch) { var cb = _appAboveClock() + (d && d.classList.contains('on') ? d.offsetHeight + 8 : 0);
+      ch.style.bottom = cb + 'px'; ch.style.width = Math.min(300, W - 24) + 'px'; ch.style.maxWidth = 'none';
+      ch.style.maxHeight = Math.max(60, H - cb - 76) + 'px'; ch.style.overflow = 'auto'; }
+    /* Ask Claude: bottom-left, capped to the bottom band */
+    if (ask) { ask.style.maxHeight = Math.max(120, band - 12 - 4) + 'px'; ask.style.overflow = 'auto'; ask.style.setProperty('max-width', Math.max(220, _appBottomLimit() - 76) + 'px', 'important'); }
+    /* the aerial: the bottom band, beside the column (large = the whole bottom band) */
+    var ao = $('aerover');
+    if (ao) { var big = ao.classList.contains('big');
+      ao.style.setProperty('left', big ? '76px' : 'auto', 'important'); ao.style.setProperty('right', Math.max(68, W - _appBottomLimit()) + 'px', 'important');
+      ao.style.setProperty('bottom', '12px', 'important'); ao.style.setProperty('top', 'auto', 'important');
+      ao.style.setProperty('width', big ? 'auto' : Math.min(300, Math.round(W * 0.45)) + 'px', 'important');
+      ao.style.setProperty('height', (band - 16) + 'px', 'important'); }
+  } catch (e) { console.warn('app edges', e); }
+}
+setInterval(_appEdges, 800);
+// ── the iPad's own GPS, fed into the same path the puck feeds (onPosition) ──
+function _appGpsStart(){
+  try {
+    if (Gps.appStop || !_inApp() || !(window.LSNative.gps && window.LSNative.gps.watch)) return;
+    Gps.app = true; Gps.src = 'iPad GPS';
+    try { stopGeo(); } catch (e) {}
+    Gps.appStop = window.LSNative.gps.watch(function(p){
+      if (!p || !isFinite(p.lat) || !isFinite(p.lng)) return;
+      var now = Date.now(); Gps._rmcT.push(now); while (Gps._rmcT.length && Gps._rmcT[0] < now - 5000) Gps._rmcT.shift();
+      Gps.rateHz = Math.round(Gps._rmcT.length / 5 * 10) / 10;
+      Gps.noFix = false; Gps.pos = [p.lat, p.lng]; Gps.fixAt = now; Gps.sats = null; Gps.acc = p.acc > 0 ? p.acc : null;
+      Gps.src = 'iPad GPS' + (p.acc > 0 ? ' (±' + Math.round(p.acc) + ' m)' : '');
+      Gps.course = (p.hdg != null && isFinite(p.hdg) && p.hdg >= 0) ? p.hdg : null;
+      Gps.speedKn = (p.spd > 0 && isFinite(p.spd)) ? p.spd * 1.944 : 0;
+      onPosition();
+      try { _appAutoTick(); } catch (e) {}   /* desk-p70 */
+      try { _appMeAcc(); } catch (e) {}
+    });
+    renderPos();
+  } catch (e) { console.warn('iPad GPS', e); }
+}
+(function(){
+  if (!_appOn()) return;
+  var css = document.createElement('style');
+  css.textContent = '#al-chip{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:900;display:none;pointer-events:none;' +
+    'max-width:calc(100% - 120px);padding:9px 16px;border-radius:12px;background:rgba(17,19,28,.95);border:1.5px solid var(--border2);' +
+    'font:600 var(--fs-md) var(--sans);font-variant-numeric:tabular-nums;color:var(--text);box-shadow:0 6px 24px rgba(0,0,0,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '#al-chip.al-wait{border-color:#4f7cff;color:#cfe0ff}#al-chip.al-ok{border-color:var(--success);color:#bff3da}' +
+    '#al-chip.al-bad{border-color:#d9822b;color:#ffd7b0}#al-chip.al-auto{border-color:#29ABE2;color:#c4ecff;background:rgba(10,32,48,.95)}';
+  document.head.appendChild(css);
+  try { window.LSNative.link.on(_appLinkIn); } catch (e) { console.warn('app link', e); }
+  window._appLock = AppLock;   /* harness + screen report */
+})();
 
 // ════════════════════════════════════════════════════════════════════════════
 // 14. DAY PILOT (Dustin 10/21, after Pablo's first solo day lost track in the dead spots)
@@ -4064,7 +4760,7 @@ function _dpSetEnd(lat, lng, label){
 function _dpDrawEnd(){
   if (!map) return; var e = _dpOn() ? _dpEnd() : null;
   if (!e) { if (_dpEndMarker) { map.removeLayer(_dpEndMarker); _dpEndMarker = null; } return; }
-  var ic = L.divIcon({ className: '', html: '<div style="font:700 22px/1 var(--sans);filter:drop-shadow(0 1px 2px #000);margin:-22px 0 0 -4px">🏁</div>', iconSize: [0, 0] });
+  var ic = L.divIcon({ className: '', html: '<div style="font:700 var(--fs-xl)/1 var(--sans);filter:drop-shadow(0 1px 2px #000);margin:-22px 0 0 -4px">🏁</div>', iconSize: [0, 0] });
   if (!_dpEndMarker) _dpEndMarker = L.marker([e.lat, e.lng], { icon: ic, interactive: false, keyboard: false, zIndexOffset: 3000 }).addTo(map); else _dpEndMarker.setLatLng([e.lat, e.lng]);
 }
 var _dpPicking = false;
@@ -4111,7 +4807,7 @@ function _dpFrom(){
 function _dpNext(){
   if (Date.now() - _dp.at < 3000) return _dp.next;
   _dp.at = Date.now();
-  var from = _dpFrom(); if (!from) { _dp.info = null; _dp.next = undefined; return undefined; }   // no position: the desk's own NEXT
+  var from = _dpFrom(); if (!from) { _dp.info = null; _dp.next = undefined; _dp.rank = []; return undefined; }   // no position: the desk's own NEXT
   var live = liveMap(), seen = {}, left = [], cand = [], cam = _cameraSeq ? pinKey(_cameraSeq) : null, nowMs = Date.now();
   listable().forEach(function(r){ var k = pinKey(r.seq); if (seen[k]) return; seen[k] = 1; var gs = groupSeqs(k, live); if (!gs.length || worstStatus(gs) !== 'pending') return;
     var p = ll(_rowFor(k) || r); if (!p) return; var it = { seq: k, ll: p }; left.push(it); if (k !== cam && !(_dp.snooze[k] > nowMs)) cand.push(it); });
@@ -4137,6 +4833,9 @@ function _dpNext(){
     else { _dp.track.min = Math.min(_dp.track.min, d);
       if (nowMs - _dp.track.since > 3 * 60000 && d > _dp.track.min + 0.6) { _dp.snooze[best.seq] = nowMs + 60 * 60000; _dp.track = null; _dp.at = 0; return _dpNext(); } } }
   _dp.info = { left: left.length, fits: fits, toEnd: toEnd, until: until, sunset: ss, end: end, pace: pace };
+  /* desk-p67: the next few for the top ribbon, in the ring's own order (its score); d = metres from where he is */
+  _dp.rank = cand.map(function(c){ var sc = _dpKm(origin, c.ll); if (endLL) sc += pull * Math.max(0, _dpKm(c.ll, endLL) - dMeEnd);
+    return { seq: c.seq, sc: sc, d: _dpKm(from, c.ll) * 1000 }; }).sort(function(a, b){ return a.sc - b.sc; }).slice(0, 3);
   _dp.next = best ? best.seq : null;
   return _dp.next;
 }
@@ -4192,7 +4891,7 @@ setInterval(function(){ if (!_dpOn() || !state.job) return; var was = _dp.next; 
   ['click', 'dblclick', 'pointerdown', 'mousedown', 'wheel'].forEach(function(ev){ $('dp-daycard').addEventListener(ev, function(e){ e.stopPropagation(); }); });
   setDay(dayOpen);
   $('dp-cancel').onclick = function(e){ e.stopPropagation(); _dpPick(false); };
-  $('dp-here').onclick = function(e){ e.stopPropagation(); var f = _dpFrom(); if (!f) { $('dp-msg').textContent = 'No position yet: connect the GPS puck, or tap the map.'; return; } _dpSetEnd(f[0], f[1], 'Back here tonight'); };
+  $('dp-here').onclick = function(e){ e.stopPropagation(); var f = _dpFrom(); if (!f) { $('dp-msg').textContent = _devText('No position yet: connect the GPS puck, or tap the map.'); return; } _dpSetEnd(f[0], f[1], 'Back here tonight'); };
   $('dp-go').onclick = function(e){ e.stopPropagation(); _dpTyped(); };
   $('dp-q').addEventListener('keydown', function(e){ e.stopPropagation(); if (e.key === 'Enter') _dpTyped(); if (e.key === 'Escape') _dpPick(false); });
   ['click', 'dblclick', 'pointerdown', 'mousedown', 'wheel'].forEach(function(ev){ $('dp-chip').addEventListener(ev, function(e){ e.stopPropagation(); }); });
@@ -4202,6 +4901,7 @@ function _dpAttachMap(){ if (!map || map._dpOn) return; map._dpOn = true;
   // the 🏁 button sits just above the Map/Imagery panel (or its minimized tab)
   // above the minimized "▦ Map" tab; beside the panel (to its left) while it is open and tall
   var place = function(){ var tb = $('tilebar'), btn = $('dp-end'), chip = $('dp-chip'); if (!tb || !btn) return;
+    if (_inApp()) { _appPlaceCtl(); return; }   /* desk-p70: the app's one column (_appPlaceCtl) */
     var vis = !!tb.offsetParent, h = vis ? tb.offsetHeight : 0, w = vis ? tb.offsetWidth : 0, beside = h > 90;
     var tbB = parseInt(getComputedStyle(tb).bottom) || 26; var b0 = beside ? tbB : tbB + h + 8, r0 = beside ? 12 + w + 8 : 12;
     [['dp-end', b0], ['dp-day', b0 + 48]].forEach(function(x){ var el = $(x[0]); el.style.bottom = x[1] + 'px'; el.style.right = r0 + 'px'; });
@@ -4226,13 +4926,14 @@ function bootLinkAndMap(){
         link[m] = function(path){ return (/^desk/.test(String(path || '')) && Q.get('livetest') === '1') ? real.apply(null, arguments) : Promise.resolve(null); };
       });
       try { var _lb = document.createElement('div'); _lb.id = 'look-banner'; _lb.textContent = 'LOOK-ONLY: explore freely. Nothing you do here changes your drive.';
-        _lb.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;background:#5b2d91;color:#fff;font:600 12.5px var(--sans);padding:3px 12px;border-radius:0 0 8px 8px;pointer-events:none';
+        _lb.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;background:#5b2d91;color:#fff;font:600 var(--fs-sm) var(--sans);padding:3px 12px;border-radius:0 0 8px 8px;pointer-events:none';
         document.body.appendChild(_lb); } catch (e) {}
     }
     link.start(DRIVER, function(){ renderLink(); renderShipGate(); if (link.connected) { flushOutbox(); publishJob(); publishMasterSeqs(); } });
     wireListeners();
     loadRouteModule();
-    if (!MOCK) { navigator.serial && gpsConnect(false); setTimeout(function(){ if (!Gps.port) startGeo(); }, 1500); }
+    if (!MOCK && _inApp()) _appGpsStart();   /* desk-p66: the iPad's own GPS, never the puck */
+    else if (!MOCK) { navigator.serial && gpsConnect(false); setTimeout(function(){ if (!Gps.port) startGeo(); }, 1500); }
   }
   wireJobDriven(); publishJob();
   renderCacheStatus();
@@ -4256,6 +4957,9 @@ async function showStart(){
     $('use-cache').textContent = (_old ? '⚠ ' : '') + 'Use the saved list from ' + day.job.date + ' (' + day.job.bucket + ')' + (h ? ' — only if the folder will not open' : '');
     $('use-cache').title = _old ? 'This is an older list: tonight\'s rebuild is not in it. Open the folder when you can.' : ''; }
   if (MOCK) { $('open-folder').textContent = 'Load mock drive file (' + MOCK.split('/').pop() + ')'; }
+  if (_inApp()) { try { var _sb = $('start').querySelector('.box'); _sb.querySelector('h1').textContent = 'Ledgerstone · Map';
+    _sb.querySelector('p').textContent = 'Today\'s county opens by itself once the app has it on this iPad. Nothing to pick.';
+    if (!MOCK) $('open-folder').style.display = 'none'; } catch (e) {} }   /* desk-p66: no folders or keys on the iPad */
 }
 function takeSignin(){
   if (MOCK) return true;
@@ -4277,10 +4981,11 @@ if (Q.get('test') === '1') { try { var _hb = $('here-btn'); _hb.style.display = 
   _hb.onclick = function(){ if (!map) return; var c = map.getCenter(); Gps.pos = [c.lat, c.lng]; Gps.src = 'test position'; Gps.fixAt = Date.now(); Gps.course = null; Gps.speedKn = 0;
     onPosition(); toast('Test position set at the map centre', 2500); }; } catch (e) {} }
 function renderGpsToggle(){ var t = $('gps-toggle'); if (!t) return;
-  var have = !!(Gps.port || Gps.mock || (Gps.pos && Gps.src === 'test position'));
-  t.textContent = !have ? '◎ Connect GPS' : (_followMe ? '◎ Centered on GPS' : '◎ Center on GPS');
+  var have = !!(Gps.port || Gps.mock || (Gps.app && Gps.pos) || (Gps.pos && Gps.src === 'test position'));
+  t.textContent = !have ? (Gps.app ? '◎ Waiting for GPS' : '◎ Connect GPS') : (_followMe ? '◎ Centered on GPS' : '◎ Center on GPS');
   t.classList.toggle('on', have && _followMe); }
-$('gps-toggle').onclick = function(){ var have = !!(Gps.port || Gps.mock || (Gps.pos && Gps.src === 'test position'));
+$('gps-toggle').onclick = function(){ var have = !!(Gps.port || Gps.mock || (Gps.app && Gps.pos) || (Gps.pos && Gps.src === 'test position'));
+  if (!have && Gps.app) { toast('Waiting for the iPad\'s GPS. Location must be set to Always for Ledgerstone.', 3500); return; }
   if (!have) { gpsConnect(true); return; } toggleFollow(); renderGpsToggle(); };
 setInterval(renderGpsToggle, 1000);
 if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display = ''; _h2.onclick = function(){ $('here-btn').click(); renderGpsToggle(); }; } catch (e) {} }
@@ -4391,7 +5096,7 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
 //    the map says why — no stop, no reload, no text.
 var _autoSheet = { busy: false, pending: null, bucket: null, rnRef: null, rnBucket: null };
 var SHEET_URL = 'https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet';
-function _noteShow(id, html, ms){ try { var el = $(id); if (!el) { el = document.createElement('div'); el.id = id; $('mapwrap').appendChild(el); }
+function _noteShow(id, html, ms){ try { html = _devText(html); var el = $(id); if (!el) { el = document.createElement('div'); el.id = id; $('mapwrap').appendChild(el); }
   el.innerHTML = html; el.style.display = 'block'; clearTimeout(el._t); _noteKeep(el.textContent); if (ms) el._t = setTimeout(function(){ el.style.display = 'none'; }, ms);
   var x = el.querySelector('button'); if (x) x.onclick = function(){ el.style.display = 'none'; }; } catch (e) {} }
 async function deskAutoSheet(why){
@@ -4490,7 +5195,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     _dc.onmessage = function(ev){ var m = ev.data || {};
       if (m.t === 'hello' && m.id !== _me && !window.__deskRetired) _dc.postMessage({ t: 'here', to: m.id });
       else if (m.t === 'takeover' && m.from !== _me) { window.__deskRetired = true;
-        try { document.title = 'Desk moved'; document.body.innerHTML = '<div style="font:600 18px var(--sans);color:#ccc;padding:40px">The desk moved to another tab. You can close this one.</div>'; } catch (e) {}
+        try { document.title = 'Desk moved'; document.body.innerHTML = '<div style="font:600 var(--fs-lg) var(--sans);color:#ccc;padding:40px">The desk moved to another tab. You can close this one.</div>'; } catch (e) {}
         try { location.replace('about:blank'); } catch (e) {} }
       else if (m.t === 'here' && m.to === _me && !window.__deskDup) { window.__deskDup = true;
         confirmBox('The desk is already open', 'Another Chrome tab has the desk open, maybe in a window you cannot see. Use this tab and the other one closes its desk. (Your unsent changes are kept.)', 'Use this tab').then(function(ok){
@@ -4624,6 +5329,8 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   function leftNow(){ var n = parseInt(($('st-pending') || {}).textContent, 10); return isFinite(n) ? n : null; }
   async function render(){
     var host = $('today-dd'); if (!host) { host = document.createElement('div'); host.id = 'today-dd'; var su = $('setup'); if (!su) return; su.parentNode.insertBefore(host, su); }
+    /* desk-p76: in the app the list drops from the county chip, so it hangs right under the header */
+    if (window.LSNative && window.LSNative.app) { var tbr = document.querySelector('#log .topbar'); if (tbr && host.previousElementSibling !== tbr) tbr.parentNode.insertBefore(host, tbr.nextSibling); }
     if (!_sched || !(_sched.today || []).length) { host.style.display = 'none'; return; }
     host.style.display = '';
     var B = curB(), cur = (_sched.today || []).filter(function(c){ return c.bucket === B; })[0] || (_sched.today || [])[0];
@@ -4679,6 +5386,8 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
     } catch (e) {}
   };
   window._todayRender = function(){ render(); drawNext(); };
+  /* desk-p76: in the app the county chip on the header opens this list (the blue bar is folded into it) */
+  window._todayToggle = function(){ var h = $('today-dd'); if (!_sched || !(_sched.today || []).length || !h) return false; _open = !_open; h.classList.toggle('open', _open); return true; };
   window._todayOpen = function(B){ B = String(B || '').toUpperCase(); return DB.get('kv', 'schedSheet:' + B).then(function(x){ return (x && x.b64) ? switchTo(B, 'session') : false; }); };
   window._todaySet = function(sch){ _sched = sch; render(); drawNext(); };   // the harness / mock preview only
   window._todaySched = function(){ return _sched; };   // desk-p51: the offline-ready report reads today's + the next county
