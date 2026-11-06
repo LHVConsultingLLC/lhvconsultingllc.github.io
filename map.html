@@ -1134,7 +1134,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p81';
+var DESK_BUILD = 'desk-p82';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -5144,14 +5144,16 @@ async function deskAutoSheetApply(){
 function _applyRedeemedNow(v, quiet){
   try {
     if (!v || !state.seqs || !state.seqs.length) return;
-    var keys = {};
-    Object.keys(v).forEach(function(k){ if (k === '_last') return; var e = v[k] || {};
-      var a = _normPid(e.parcelId); if (a) keys[a] = 1; var b = _normPid(String(k).split('__').pop()); if (b) keys[b] = 1; });
+    var keys = {};   /* 1 = redeemed, 2 = order retired (desk-p82): a retired order also takes a pin marked but never closed */
+    Object.keys(v).forEach(function(k){ if (k === '_last') return; var e = v[k] || {}, w = e.retired === true ? 2 : 1;
+      var a = _normPid(e.parcelId); if (a) keys[a] = Math.max(keys[a] || 0, w); var b = _normPid(String(k).split('__').pop()); if (b) keys[b] = Math.max(keys[b] || 0, w); });
     var gone = 0;
     state.seqs = state.seqs.filter(function(r){
-      if (!keys[_normPid(r.parcelId)]) return true;
-      if (String(r.seq) === String(_camOpen) || displayStatus(r.seq) !== 'pending') return true;   // worked or open: stays
-      gone++; try { _stkRedeemedAdd(r); } catch (e) {} return false; });   /* a stacked spot's list still shows it, as redeemed */
+      var w = keys[_normPid(r.parcelId)]; if (!w) return true;
+      var ds = displayStatus(r.seq);
+      if (String(r.seq) === String(_camOpen) || (ds !== 'pending' && !(w === 2 && ds === 'marked'))) return true;   // worked or open: stays
+      if (ds === 'marked') { try { delete _dp.marks[String(r.seq)]; _dpSaveMarks(); } catch (e) {} }   /* off the map = no "marked, no photos" at ship */
+      gone++; if (w === 1) { try { _stkRedeemedAdd(r); } catch (e) {} } return false; });   /* a stacked spot's list still shows a redeemed one, as redeemed */
     if (!gone) return;
     indexRows(); if (state.currentSeq && !_rowIdx[String(parseInt(state.currentSeq, 10))]) state.currentSeq = null;
     if (map) buildMarkers(); try { if (link && link.connected) publishMasterSeqs(); } catch (e) {}
