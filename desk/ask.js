@@ -15,22 +15,22 @@
     '#askc-fab{position:absolute;left:10px;bottom:10px;z-index:900;width:58px;height:58px;border-radius:50%;border:3px solid #fff;background:#d97757;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;cursor:pointer}',
     '#askc-fab:hover{transform:scale(1.06)} #askc-fab.on{box-shadow:0 0 0 8px rgba(217,119,87,.35),0 4px 14px rgba(0,0,0,.45)}',
     '#askc-pop{position:absolute;left:10px;bottom:78px;z-index:901;width:330px;max-width:calc(100% - 32px);background:#141a33;border:1px solid #d97757;border-radius:12px;padding:10px;box-shadow:0 8px 30px rgba(0,0,0,.55);color:#e6eaf5;display:none}',
-    '#askc-pop .askc-head{display:flex;align-items:center;font:600 13px var(--sans);color:#f0b49c}',
-    '#askc-pop .askc-head button{margin-left:auto;background:none;border:0;color:#8a93ad;font-size:15px;cursor:pointer}',
-    '#askc-pop .askc-listen{margin:8px 0;padding:10px;border-radius:8px;background:#0f1430;border:1px dashed #3b4a8a;font:600 13px var(--sans);color:#a9b4d6;text-align:center}',
+    '#askc-pop .askc-head{display:flex;align-items:center;font:600 var(--fs-sm) var(--sans);color:#f0b49c}',
+    '#askc-pop .askc-head button{margin-left:auto;background:none;border:0;color:#8a93ad;font-size:var(--fs-md);cursor:pointer}',
+    '#askc-pop .askc-listen{margin:8px 0;padding:10px;border-radius:8px;background:#0f1430;border:1px dashed #3b4a8a;font:600 var(--fs-sm) var(--sans);color:#a9b4d6;text-align:center}',
     '#askc-pop .askc-listen.on{border:1px solid #d97757;color:#ffd2c2;animation:askcPulse 1s infinite} @keyframes askcPulse{50%{background:#2a1a14}}',
     '#askc-pop .askc-qa{background:#0f1430;border:1px solid #2a3350;border-radius:8px;padding:9px}',
-    '#askc-pop .askc-qa .q{font:600 12px var(--sans);color:#8a93ad} #askc-pop .askc-qa .a{margin-top:5px;font:600 14px/1.35 var(--sans)} #askc-pop .askc-qa .a b{color:#7fb0ff}',
-    '#askc-pop .askc-qa .act{margin-top:8px;width:100%;border:0;border-radius:7px;padding:8px;background:#3b6cff;color:#fff;font:600 13px var(--sans);cursor:pointer}',
-    '#askc-pop .askc-qa .meta{margin-top:6px;font:500 11px var(--sans);color:#5d6788}',
-    '#askc-pop .askc-type{display:flex;gap:6px;margin:6px 0} #askc-pop .askc-type input{flex:1;min-width:0;border-radius:8px;border:1px solid #3a4680;background:#0f1428;color:#e6eaf5;padding:8px;font:600 13px var(--sans)} #askc-pop .askc-type button{border:0;border-radius:8px;padding:0 12px;background:#d97757;color:#fff;font:600 13px var(--sans);cursor:pointer}',
-    '#askc-pop .askc-try{font:500 11px var(--sans);color:#8a93ad;margin-top:6px}',
-    '#askc-chips{margin:6px 0} .askc-chip{border-radius:8px;padding:7px 9px;font:600 13px/1.3 var(--sans);display:flex;align-items:center;gap:8px;margin:5px 0}',
+    '#askc-pop .askc-qa .q{font:600 var(--fs-sm) var(--sans);color:#8a93ad} #askc-pop .askc-qa .a{margin-top:5px;font:600 var(--fs-md)/1.35 var(--sans)} #askc-pop .askc-qa .a b{color:#7fb0ff}',
+    '#askc-pop .askc-qa .act{margin-top:8px;width:100%;border:0;border-radius:7px;padding:8px;background:#3b6cff;color:#fff;font:600 var(--fs-sm) var(--sans);cursor:pointer}',
+    '#askc-pop .askc-qa .meta{margin-top:6px;font:500 var(--fs-xs) var(--sans);color:#5d6788}',
+    '#askc-pop .askc-type{display:flex;gap:6px;margin:6px 0} #askc-pop .askc-type input{flex:1;min-width:0;border-radius:8px;border:1px solid #3a4680;background:#0f1428;color:#e6eaf5;padding:8px;font:600 var(--fs-sm) var(--sans)} #askc-pop .askc-type button{border:0;border-radius:8px;padding:0 12px;background:#d97757;color:#fff;font:600 var(--fs-sm) var(--sans);cursor:pointer}',
+    '#askc-pop .askc-try{font:500 var(--fs-xs) var(--sans);color:#8a93ad;margin-top:6px}',
+    '#askc-chips{margin:6px 0} .askc-chip{border-radius:8px;padding:7px 9px;font:600 var(--fs-sm)/1.3 var(--sans);display:flex;align-items:center;gap:8px;margin:5px 0}',
     '.askc-chip.warn{background:#3a2e10;border:1px solid #b88a1a;color:#ffd77a} .askc-chip.ok{background:#0f2e1c;border:1px solid #2f8f55;color:#8ff0b5} .askc-chip.bad{background:#3a1414;border:1px solid #a33;color:#ffb3b3}',
-    '.askc-chip button{margin-left:auto;border:0;border-radius:6px;padding:4px 9px;font:600 12px var(--sans);background:#ffd77a;color:#2a1e00;cursor:pointer}',
+    '.askc-chip button{margin-left:auto;border:0;border-radius:6px;padding:4px 9px;font:600 var(--fs-sm) var(--sans);background:#ffd77a;color:#2a1e00;cursor:pointer}',
     '#gpsbar{left:auto!important;right:12px!important;bottom:12px!important} #tilebar{bottom:56px!important}',
     '#mph{position:absolute!important;left:80px;bottom:12px;z-index:560}',
-    '.leaflet-control-attribution{font-size:11px!important;opacity:.55;background:rgba(0,0,0,.35)!important;color:#ccc!important;max-width:45%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .leaflet-control-attribution a{color:#ccc!important}'
+    '.leaflet-control-attribution{font-size:var(--fs-xs)!important;opacity:.55;background:rgba(0,0,0,.35)!important;color:#ccc!important;max-width:45%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .leaflet-control-attribution a{color:#ccc!important}'
   ].join('\n'); document.head.appendChild(css);
 
   // ── button + pop-up on the map ──
@@ -41,7 +41,7 @@
   pop.innerHTML = '<div class="askc-head"><span>Ask Claude</span><button id="askc-x" title="Close">✕</button></div>'
     + '<div id="askc-listen" class="askc-listen">Tap the Claude button and ask out loud.</div>'
     + '<div class="askc-type"><input id="askc-in" placeholder="…or type your question" autocomplete="off"><button id="askc-send">Ask</button></div><div id="askc-a"></div>'
-    + '<div class="askc-try">Ask anything about your day: reload, safe to ship, what is left, a stuck parcel, the camera.</div>';
+    + '<div class="askc-try">Ask anything about your day: safe to ship, what is left, a stuck parcel, the camera.</div>';   /* desk-p85: no "reload" (11/7) */
   wrap.appendChild(fab); wrap.appendChild(pop);
   try { var m = document.getElementById('mph'); if (m) wrap.appendChild(m); } catch (e) {}
   var chips = document.createElement('div'); chips.id = 'askc-chips';
@@ -50,9 +50,32 @@
   var $ = function(id){ return document.getElementById(id); };
   // desk-p43: what the button did last, in the 30-s screen report (Mike 10/27: "isn't working", nothing reached the server)
   var st = window.__askState = { taps: 0, lastTap: 0, lastErr: '', lastSent: 0, lastOk: 0, typed: 0 };
-  var say = function(text){ try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(String(text)); u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} };
+  /* 11/2 (Dustin: "can we change the voice? ... to something more normal ... universally"): the cameras' voice. In order:
+     an en-US Premium/Enhanced voice (Ava, Zoe, ...), Samantha, any en-US voice on the device, any English voice. */
+  var NOVELTY = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|fred|kathy|grandma|grandpa|eddy|flo|reed|rocko|sandy|shelley)\b/i, voiceKept = null;
+  var pickVoice = function(){
+    try {
+      var en = speechSynthesis.getVoices().filter(function(v){ return /^en/i.test(v.lang) && !NOVELTY.test(v.name); });
+      var us = en.filter(function(v){ return /^en[-_]us$/i.test(v.lang); });
+      var v = us.find(function(x){ return /premium|enhanced/i.test(x.name + ' ' + (x.voiceURI || '')); })
+        || en.find(function(x){ return /\bsamantha\b/i.test(x.name); }) || us.find(function(x){ return x.localService; }) || us[0]
+        || en.find(function(x){ return x.localService; }) || en[0] || null;
+      if (v) voiceKept = v;
+    } catch (e) {}
+    return voiceKept;
+  };
+  try { speechSynthesis.getVoices(); speechSynthesis.addEventListener('voiceschanged', pickVoice); } catch (e) {}
+  var sayDevice = function(text){ try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(String(text)); u.rate = 1.0; u.lang = 'en-US';
+    var v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } speechSynthesis.speak(u); } catch (e) {} };
+  /* 11/2 Kestrel app: answers in Kestrel's own voice (app/voice/kvoice.js: the phrase pack, then appVoice with signal); the
+     device voice only when neither can. Laptops: the device voice, as before. */
+  var inApp = !!(window.LSNative && window.LSNative.app);
+  if (inApp && !window.KVoice) { try { var kv = document.createElement('script'); kv.src = 'app/voice/kvoice.js'; document.head.appendChild(kv); } catch (e) {} }
+  var say = function(text){
+    if (inApp && window.KVoice) { try { speechSynthesis.cancel(); } catch (e) {} window.KVoice.speak(String(text), { kind: 'speech' }).then(function(ok){ if (!ok) sayDevice(text); }, function(){ sayDevice(text); }); return; }
+    sayDevice(text); };
   var open = function(){ pop.style.display = 'block'; };
-  var close = function(){ pop.style.display = 'none'; try { speechSynthesis.cancel(); } catch (e) {} };
+  var close = function(){ pop.style.display = 'none'; try { speechSynthesis.cancel(); } catch (e) {} try { if (window.KVoice) window.KVoice.stop(); } catch (e) {} };
   $('askc-x').onclick = close;
 
   function render(q, answer, action, meta){
@@ -201,12 +224,14 @@
     try {
       var out = '';
       var loaded = (window.state && state.seqs) ? state.seqs.length : 0;
-      if (liveRows && loaded && liveRows !== loaded) out += '<div class="askc-chip ok">⟳ New sheet coming in — it loads by itself between parcels. Nothing to do.</div>';
       var cs = window._camSync || {}, pend = Number(cs.pending || 0), parked = Number(cs.parked || 0);
+      if (liveRows && loaded && liveRows !== loaded) out += '<div class="askc-chip ok">' + (window.LSNative && window.LSNative.app ? '⟳ New sheet · loads by itself' : '⟳ New sheet coming in — it loads by itself between parcels. Nothing to do.') + '</div>';
       var live = cs.at && (Date.now() - Number(cs.at)) < 3 * 60000;
-      if (live && pend === 0 && parked === 0) out += '<div class="askc-chip ok">✓ Safe to ship: 0 uploading, every close has photos</div>';
-      else if (live && pend > 0) out += '<div class="askc-chip warn">↑ ' + pend + ' photo' + (pend > 1 ? 's' : '') + ' still uploading — not yet safe to ship</div>';
-      else if (live && parked > 0) out += '<div class="askc-chip bad">⚠ ' + parked + ' photo' + (parked > 1 ? 's' : '') + ' failed to upload — ask me before you ship</div>';
+      /* Kestrel app (Dustin 11/2: "turn safe to ship into one line instead of taking up so much space"): the short words */
+      var app = !!(window.LSNative && window.LSNative.app);
+      if (live && pend === 0 && parked === 0) out += '<div class="askc-chip ok">' + (app ? '✓ Safe to ship' : '✓ Safe to ship: 0 uploading, every close has photos') + '</div>';
+      else if (live && pend > 0) out += '<div class="askc-chip warn">↑ ' + pend + ' photo' + (pend > 1 ? 's' : '') + (app ? ' uploading · not yet' : ' still uploading — not yet safe to ship') + '</div>';
+      else if (live && parked > 0) out += '<div class="askc-chip bad">⚠ ' + parked + ' photo' + (parked > 1 ? 's' : '') + (app ? ' failed · ask before ship' : ' failed to upload — ask me before you ship') + '</div>';
       chips.innerHTML = out;
       var lb = $('askc-load'); if (lb) lb.onclick = function(){ showStart(); };
     } catch (e) {}

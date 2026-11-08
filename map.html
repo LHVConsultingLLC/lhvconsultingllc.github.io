@@ -595,6 +595,7 @@ html body.dp .stat[data-f="incomplete"]{display:none!important}
 .cxname{margin-top:6px;font:700 var(--fs-md, 15px) var(--sans);letter-spacing:.3px;color:var(--text, #e8eaf6)}
 .cxshots{margin:5px 0 2px;padding-left:22px;font:600 var(--fs-sm) var(--sans);line-height:1.45;color:var(--text, #e8eaf6)}
 .cxshots li{margin:1px 0}.cxshots li b{color:#ffc46b}
+/* desk-p84 (Dustin 11/7): the other kinds of one stop (same-owner lots, townhouse rows, mobile home parks) use the same card */
 .warnchip{margin-top:5px;font:600 var(--fs-sm)/1.3 var(--sans);padding:4px 8px;border-radius:7px;background:#3a1d12;color:#ffb38a;border:1px solid #a8552c}
 .details{padding:6px 0 4px;border-bottom:1px solid var(--border)}
 .facts{font-size:var(--fs-sm);color:#c9cee0}.facts b{color:#fff}
@@ -1048,7 +1049,9 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
     </div>
     <div id="list"></div>
     <div id="strip" title="Open the log (L)"></div>
-    <div class="foot"><span id="build">desk-p1</span><span class="grow"></span><a id="help-link">Keys ( ? )</a><a id="reload-link">Load drive file</a></div>
+    <!-- desk-p85 (11/7): the footer's "Load drive file" link is hidden for drivers: new sheets load by themselves between parcels (the
+         chip says so) and Claude's "Get the newest sheet" button is the one manual step. The element stays (its handler is kept). -->
+    <div class="foot"><span id="build">desk-p1</span><span class="grow"></span><a id="help-link">Keys ( ? )</a><a id="reload-link" style="display:none" aria-hidden="true">Load drive file</a></div>
   </section>
   <div id="splitter" title="Drag to resize · double-click = 25/75"></div>
   <!-- ═══════════════ RIGHT 3/4: THE MAP ═══════════════ -->
@@ -1138,7 +1141,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p83';
+var DESK_BUILD = 'desk-p85';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -2208,7 +2211,8 @@ function publishMasterSeqs(){   // the camera validates seqs against this (same 
   var live = state.seqs.filter(function(s){ try { return !_drivenOnAnEarlierDay(s.seq); } catch(e) { return true; } });
   var lite = live.map(function(s){ return { seq:s.seq, parcelId:s.parcelId||'', street:s.street||'', city:s.city||'', propState:s.propState||'', zip:s.zip||'', lat:s.lat||'', lng:s.lng||'', area:s.area||'',
     grp: _grpPin[String(parseInt(s.seq, 10))] || '',   /* grp = the batch's pin seq (one property), '' = not batched */
-    cx: (_grpPin[String(parseInt(s.seq, 10))] && _cxOfRow(s)) ? (_cxOfRow(s).name || 'CONDO COMPLEX') : '', cxm: (_grpPin[String(parseInt(s.seq, 10))] && _cxOfRow(s)) ? (Number(_cxOfRow(s).spanM) || 0) : 0 }; });   /* desk-p83: cx = the confirmed condo complex */
+    cx: (_grpPin[String(parseInt(s.seq, 10))] && _cxOfRow(s)) ? (_cxOfRow(s).name || 'CONDO COMPLEX') : '', cxm: (_grpPin[String(parseInt(s.seq, 10))] && _cxOfRow(s)) ? (Number(_cxOfRow(s).spanM) || 0) : 0,   /* desk-p83: cx = the confirmed condo complex */
+    bs: (_grpPin[String(parseInt(s.seq, 10))] && _bkEach(s)) ? 'each' : '', bk: (_grpPin[String(parseInt(s.seq, 10))] && _bkEach(s)) ? String(_bkOfRow(s).label || _bkOfRow(s).kind || '') : '' }; });   /* desk-p84: bs 'each' = one stop, each parcel its own frame (camera MULTIPLE run) */
   var sig = state.job.bucket + ':' + lite.length + ':' + _grpSig;
   if (sig === _publishedFor) return;
   link.set('masterSeqs', lite).then(function(){ _publishedFor = sig; }).catch(function(){});
@@ -2368,6 +2372,23 @@ function _cxCardHtml(r, members){
     '<ol class="cxshots"><li><b>Entrance</b> or complex name sign first</li><li><b>One wide shot</b> taking in as much of the complex as you can</li>' +
     '<li><b>The parking lot</b></li><li><b>STOP</b> closes all ' + n + ' units</li></ol>';
 }
+/* desk-p84 (Dustin 11/7): the batch's kind from the server (batchkinds.js): { kind, shots, label, n }, or null.
+   shots 'each' = ONE STOP, EACH PARCEL ITS OWN FRAME (same-owner lots, townhouse / attached rows, mobile home parks) */
+function _bkOfRow(r){ return (r && Bnd.bkOf && Bnd.bkOf[_normPid(r.parcelId)]) || null; }
+function _bkEach(r){ var b = _bkOfRow(r); return !!(b && b.shots === 'each' && !_cxOfRow(r)); }
+/* the shot list per kind, in the condo card's plain words. Never one shared set: every parcel gets its own frame */
+var _BK_SHOTS = {
+  lots: ['<b>One stop</b> where you can see every parcel', '<b>Each parcel its own frame</b>, the whole lot in it', 'Say <b>next parcel</b> to move on; the phone calls the next one'],
+  row: ['<b>One stop</b> in front of the row', '<b>Each unit its own frame</b>: its own front door and walls', 'Say <b>next parcel</b> to move on; the phone calls the next one'],
+  park: ['<b>One slow pass</b> down the park lane, one loop at most', '<b>Each home its own frame</b>: the home and its site', 'Say <b>next parcel</b> to move on; the phone calls the next one']
+};
+function _bkCardHtml(r, members){
+  var b = _bkOfRow(r); if (!b) return '';
+  var n = members.length, word = b.kind === 'park' ? 'homes' : b.kind === 'row' ? 'units' : 'parcels';
+  var shots = _BK_SHOTS[b.kind] || _BK_SHOTS.lots;
+  return '<div class="cxname">' + esc(String(b.label || 'One stop')) + ' · ' + n + ' ' + word + ' · one stop</div>' +
+    '<ol class="cxshots">' + shots.map(function(t){ return '<li>' + t + '</li>'; }).join('') + '<li><b>STOP</b> after the last one</li></ol>';
+}
 function sameAddrSeqs(seq){ return _sameAddr[String(parseInt(seq, 10))] || null; }
 /* rows that share one stamped group (Bnd.groupOf: parcel -> the pin parcel) form a batch; returns true when it changed */
 function _rebuildGroups(){
@@ -2388,21 +2409,22 @@ function _rebuildGroups(){
   var changed = sig !== _grpSig; _grpSig = sig; return changed;
 }
 // ── PARCEL OUTLINES (offline): <bucket>.boundaries.geojson, keyed by PARCEL ID ──
-var Bnd = { bucket: null, byPid: {}, n: 0, ver: 0, groupOf: {}, grouped: false, cxOf: {} };
+var Bnd = { bucket: null, byPid: {}, n: 0, ver: 0, groupOf: {}, grouped: false, cxOf: {}, bkOf: {} };
 function _ringsOf(geom){
   if (!geom) return [];
   var polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
   return polys.map(function(p){ return (p[0] || []).map(function(c){ return [c[1], c[0]]; }); });   // outer ring, [lat,lng]
 }
 function _indexBounds(bucket, fc){
-  var by = {}, n = 0, grp = {}, grouped = !!(fc && fc.propertyGroups), cx = {};
+  var by = {}, n = 0, grp = {}, grouped = !!(fc && fc.propertyGroups), cx = {}, bk = {};
   ((fc && fc.features) || []).forEach(function(f){ var pid = _normPid(f && f.properties && f.properties.pid); var rings = _ringsOf(f && f.geometry);
     if (pid && grouped && f.properties.group) grp[pid] = _normPid(f.properties.group);
     if (pid && grouped && f.properties.group && f.properties.complex) cx[pid] = f.properties.complex;   /* desk-p83: a confirmed condo complex */
+    if (pid && grouped && f.properties.group && f.properties.batch) bk[pid] = f.properties.batch;      /* desk-p84: the batch's kind + shots */
     if (!pid || !rings.length) return; var la = [], lo = [];
     rings.forEach(function(r){ r.forEach(function(c){ la.push(c[0]); lo.push(c[1]); }); });
     by[pid] = { rings: rings, bb: [Math.min.apply(null, la), Math.min.apply(null, lo), Math.max.apply(null, la), Math.max.apply(null, lo)] }; n++; });
-  Bnd = { bucket: bucket, byPid: by, n: n, ver: Bnd.ver + 1, groupOf: grp, grouped: grouped, cxOf: cx };
+  Bnd = { bucket: bucket, byPid: by, n: n, ver: Bnd.ver + 1, groupOf: grp, grouped: grouped, cxOf: cx, bkOf: bk };
   if (_rebuildGroups() && map) buildMarkers();   /* the batches arrive with the outline file */
   renderCacheStatus(); renderAll();
 }
@@ -2659,7 +2681,7 @@ function renderCard(){
       (area !== '--' ? '<span class="areabig" title="Area rating for this parcel">AREA <b>' + area + '</b></span>' : '') + '</div>' +
       '<button class="aerbtn aerfloat" id="card-aer" title="Open this parcel\'s aerial, large (A)">▣ Aerial <kbd>A</kbd></button>' + '<div class="addr">' + esc(r.street || '(no address)') + '</div>' + (r.city || r.zip ? '<div class="city">' + esc([r.city, r.zip].filter(Boolean).join(' ')) + '</div>' : '') +
       '<div class="pid">' + esc(r.parcelId) + (r.landUse ? ' · ' + esc(r.landUse) : '') + ' · photos ' + pc + (shot > pc ? ' of ' + shot : '') + '</div>' +
-      (sameAddrSeqs(seq) ? (_cxOfRow(r) ? _cxCardHtml(r, sameAddrSeqs(seq)) : '<div class="multi">ONE PROPERTY · one stop, a BATCH · each seq its own client row</div>') + '<div>' +
+      (sameAddrSeqs(seq) ? (_cxOfRow(r) ? _cxCardHtml(r, sameAddrSeqs(seq)) : _bkEach(r) ? _bkCardHtml(r, sameAddrSeqs(seq)) : '<div class="multi">ONE PROPERTY · one stop, a BATCH · each seq its own client row</div>') + '<div>' +
         sameAddrSeqs(seq).map(function(x){ var sx = displayStatus(x); return '<button class="gmem' + (String(x) === String(seq) ? ' on' : '') + '" data-seq="' + esc(x) + '"><span class="dot ' + sx + '"></span>' + esc(x) + ' · ' + ST_LABEL[sx] + '</button>'; }).join('') + '</div>' : '') +
       (pinWarn(r) ? '<div class="warnchip">⚠ Pin may be off: ' + esc(pinWarn(r)) + '</div>' : '') +
     '</div></div>' +
