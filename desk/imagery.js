@@ -682,7 +682,31 @@
       for (var j = 0; j < ks.length; j++) { var k = String(ks[j]), mm = /^(opfs:|imagery:|streets:)([A-Z]{2}_[A-Z0-9_]+)/.exec(k);
         if (mm && !keep[mm[2]]) { try { await DB.del('kv', k); } catch (e) {} } }
     } catch (e) {}
+    await cleanupCounty(keep);
   }
+  /* desk-p87 (audit 11/10 F8; Richie's Chrome storage 74 GB of 85): EVERY per-county record goes with its packs, not just
+     the packs: the saved sheet, outlines, roads, speed limits, the log snapshot, the saved-aerials note and tile note, and
+     each parcel aerial picture. Kept: the keep set above (the county on the map, today's, tomorrow's, the next 3 driving
+     days') PLUS any county this laptop worked from yesterday on (its log snapshot is under 36 hours old) and the county of
+     the saved day. No schedule = nothing removed (keepSet() is null). Removed on the copy tick, never on the map's own. */
+  var _cGone = 0;
+  async function cleanupCounty(keep) {
+    if (!keep) return;
+    var K = Object.assign({}, keep), PER = /^(schedSheet|bounds|roads|speedlimits|snap|aerials|tiles):([A-Z]{2}_[A-Z0-9_]+)$/, now = Date.now();
+    try { var dd = await DB.get('kv', 'day'); if (dd && dd.job && dd.job.bucket) K[dd.job.bucket] = 1; } catch (e) {}
+    var ks = []; try { ks = await DB.keys('kv'); } catch (e) { return; }
+    /* recent work: a snapshot written in the last 36 h keeps its county */
+    for (var i = 0; i < ks.length; i++) { var m0 = /^snap:([A-Z]{2}_[A-Z0-9_]+)$/.exec(String(ks[i])); if (!m0 || K[m0[1]]) continue;
+      try { var sn = await DB.get('kv', ks[i]); if (sn && Number(sn.at || 0) > now - 36 * 3600e3) K[m0[1]] = 1; } catch (e) { K[m0[1]] = 1; } }
+    for (var j = 0; j < ks.length; j++) { var k = String(ks[j]), mm = PER.exec(k);
+      if (mm && !K[mm[2]]) { try { await DB.del('kv', k); _cGone++; } catch (e) {} } }
+    /* parcel aerial pictures: keys "<BUCKET>|pid:..." / "<BUCKET>|seq:..." */
+    try { var ak = await DB.keys('aerials');
+      for (var a = 0; a < ak.length; a++) { var b = String(ak[a]).split('|')[0];
+        if (/^[A-Z]{2}_[A-Z0-9_]+$/.test(b) && !K[b]) { try { await DB.del('aerials', ak[a]); _cGone++; } catch (e) {} } }
+    } catch (e) {}
+  }
+  window.__deskCleanupCounty = function () { return cleanupCounty(keepSet()).then(function () { return _cGone; }); };
   async function packFiles() {   // what Chrome holds, for the office: { '<file>': GB }
     var o = {}; try { var dir = await opDir();
       for await (var ent of dir.keys()) { try { var f = await (await dir.getFileHandle(ent)).getFile(); o[String(ent).replace(/\./g, '_')] = Math.round(f.size / 1e7) / 100; } catch (e) { o[String(ent).replace(/\./g, '_')] = -1; } }
@@ -1002,7 +1026,160 @@
   /* the 30-s screen report carries the checks too (the second office path: a laptop whose live writes stall still reports) */
   function aerialReport() { var o = {}; Object.keys(PA.checks).slice(-4).forEach(function (b) { var c = PA.checks[b];
     o[b] = { ok: !!c.ok, at: c.at, k: c.kind === 'tile' ? 't' : 'p', kb: c.kb || 0, b: c.build || '', e: String(c.err || '').slice(0, 40) }; }); return o; }
+  /* ── AERIALS STATUS BAR (desk-p88, Dustin 11/10: "it just shows the aerials status for the drivers on a status bar on
+     the map to confirm") ── One thin bar on the bottom edge of the map, read-only (nothing to tap, nothing asked of the
+     driver): the aerials of the county on the map and of the next scheduled one, from what this page already knows (the
+     Chrome copy, OP.st, and the draw self-test, PA.checks). No network read of its own. Same rule as the server
+     (functions/aerialsready.js): READY = both packs (aerials + streets) complete in Chrome AND this build's own test aerial
+     drew from them in the last 12 h. Otherwise it says how far the copy is, or plainly why it is not moving.
+     Once every county shown is ready it says so for a minute, then shrinks to a quiet "Aerials ready ✓".
+     Placed in the free stretch of the bottom edge between the left group (Ask Claude, the speed chip) and the right
+     group (GPS buttons, ⏱ 🏁, the attribution); the route card docks above it (desk.html placeRouteSlot). The middle of
+     the map stays clear; the zoom is never touched. Lives in this module (not a new file) because both offline helpers
+     (map-sw.js, desk-sw.js) already keep imagery.js on the laptop. */
+  var BAR = { el: null, sig: '', allAt: 0, allKey: '', test: null, quietMs: 60000, lastPlace: '' };
+  function barName(B) {
+    var s = null; try { s = window._todaySched && window._todaySched(); } catch (e) {}
+    var c = s ? (s.today || []).concat(s.tomorrow || [], s.ahead || []).filter(function (x) { return x && x.bucket === B; })[0] : null;
+    var n = c && c.county ? String(c.county).replace(/^[A-Z]{2}\s*-\s*/, '').replace(/\s+County$/i, '') : '';
+    return n || String(B || '').split('_').slice(1).map(function (w) { return w.charAt(0) + w.slice(1).toLowerCase(); }).join(' ');
+  }
+  /* one county -> { b, name, s: ready|checking|notready|copying|signal|paused|space|waiting, pct } (pure: the harness feeds it) */
+  function barCounty(B, st, chk, build, now) {
+    var I = st[B + P.imagery.file], S = st[B + P.streets.file], out = { b: B, name: barName(B), s: 'waiting', pct: null };
+    if (!I && !S) return out;
+    if (I && I.done && S && S.done) {
+      var fresh = !!(chk && chk.at && now - chk.at <= 12 * 3600e3 && chk.at <= now + 5 * 60e3 && (!build || chk.build === build));
+      out.s = fresh ? (chk.ok ? 'ready' : 'notready') : 'checking'; out.pct = 100; return out;
+    }
+    var cp = 0, tt = 0; [I, S].forEach(function (x) { if (x && x.total > 0) { tt += x.total; cp += x.done ? x.total : Math.min(x.copied || 0, x.total); } });
+    out.pct = tt > 0 ? Math.min(99, Math.floor(cp * 100 / tt)) : null;
+    var open = [I, S].filter(function (x) { return x && !x.done; }), w = open.map(function (x) { return String(x.wait || ''); }).join(' ');
+    if (open.some(function (x) { return x.copying; })) out.s = 'copying';
+    else if (/low disk/.test(w)) out.s = 'space';
+    else if (/signal/.test(w)) out.s = 'signal';
+    else if (/idle/.test(w)) out.s = 'paused';
+    return out;
+  }
+  function barModel() {
+    var now = Date.now(), build = window.DESK_BUILD || '';
+    if (BAR.test) { var t = BAR.test(); if (!t) return null; now = t.now || now; build = t.build != null ? t.build : build;
+      return { rows: (t.list || []).map(function (b) { return barCounty(b, t.st || {}, (t.checks || {})[b], build, now); }), now: now }; }
+    if (!OP.ok || !_bucket || window.LOOK || (window.LSNative && window.LSNative.app)) return null;
+    var list = [_bucket], n = nextOf(_bucket); if (n && n !== _bucket) list.push(n);
+    return { rows: list.map(function (b) { return barCounty(b, OP.st, PA.checks[b], build, now); }), now: now };
+  }
+  /* the words. Long form first; on a narrow map the shortest form that fits (the words get shorter, never different) */
+  var BAR_WORD = { checking: 'saved, checking', notready: 'not ready', signal: 'waiting for signal', paused: 'paused while driving', space: 'laptop storage full', waiting: 'waiting' };
+  var BAR_SHORT = { checking: 'checking', notready: 'not ready', signal: 'no signal', paused: 'paused', space: 'storage full', waiting: 'waiting' };
+  function barText(r, form) {   /* form: full | tight (no "aerials": the bar says it once) | short (short status words) */
+    var W = form === 'short' ? BAR_SHORT : BAR_WORD, pre = form === 'full' ? 'aerials ' : '';
+    if (r.s === 'ready') return pre + (form === 'short' ? '✓' : 'ready ✓');
+    var p = r.pct != null && r.pct > 0 && r.s !== 'checking' && r.s !== 'notready' ? r.pct + '%' : '';
+    if (r.s === 'copying') return pre + (p || '0%');
+    return pre + (p ? p + ' · ' : '') + W[r.s];
+  }
+  function barRow(r, form, first) {
+    var cls = r.s === 'ready' ? 'ab-ok' : r.s === 'notready' || r.s === 'space' ? 'ab-bad' : /signal|paused|waiting/.test(r.s) ? 'ab-wait' : '';
+    var fill = r.s === 'ready' ? '' : '<span class="ab-f" style="width:' + (r.pct || 0) + '%"></span>';
+    var t = form === 'stack' ? (first ? 'aerials ' : '') + barText(r, 'short') : form === 'tiny' ? r.pct + '%' : barText(r, form);
+    return '<span class="ab-c ' + cls + '">' + fill + '<span class="ab-t"><b>' + esc(r.name) + '</b> ' + esc(t) + '</span></span>';
+  }
+  /* forms, widest first: full, tight, short, stack (one county per line), one (the county that matters most, short) */
+  var BAR_FORMS = ['full', 'tight', 'short', 'stack', 'one', 'tiny'];   /* tiny: that county's % alone (a portrait tablet with the speed chip on) */
+  function barHtml(rows, form) {
+    if (form === 'quiet') return '<div class="ab-in"><span class="ab-c ab-ok"><span class="ab-t">Aerials ready ✓</span></span></div>';
+    if (form === 'one' || form === 'tiny') { var r = rows.filter(function (x) { return x.s !== 'ready'; })[0];
+      return r ? '<div class="ab-in">' + barRow(r, form === 'tiny' && r.pct > 0 && r.s !== 'checking' && r.s !== 'notready' ? 'tiny' : 'short') + '</div>' : barHtml(rows, 'quiet'); }
+    if (form === 'stack') return '<div class="ab-in ab-stack">' + rows.map(function (r, i) { return barRow(r, 'stack', i === 0); }).join('') + '</div>';
+    return '<div class="ab-in">' + (form === 'full' ? '' : '<span class="ab-l">Aerials</span>') + rows.map(function (r) { return barRow(r, form); }).join('<span class="ab-s"></span>') + '</div>';
+  }
+  function barEl() {
+    if (BAR.el && document.body.contains(BAR.el)) return BAR.el;
+    var mw = document.getElementById('mapwrap'); if (!mw) return null;
+    if (!document.getElementById('aerbar-css')) { var css = document.createElement('style'); css.id = 'aerbar-css'; css.textContent = [
+      '#aerbar,#aerbar-m{position:absolute;bottom:12px;left:12px;z-index:555;display:none;justify-content:center;align-items:flex-end;pointer-events:none;-webkit-user-select:none;user-select:none}',
+      '#aerbar-m{display:flex;visibility:hidden;left:0;width:auto;z-index:-1}',
+      '#aerbar .ab-in,#aerbar-m .ab-in{display:flex;align-items:stretch;height:36px;max-width:100%;box-sizing:border-box;border-radius:18px;border:2px solid var(--border2,rgba(255,255,255,.15));',
+      ' background:rgba(15,18,28,.95);box-shadow:0 3px 12px rgba(0,0,0,.5);overflow:hidden;white-space:nowrap;color:#e8ebf7;font:600 15px/1 var(--sans,Inter,sans-serif);font-variant-numeric:tabular-nums}',
+      '#aerbar .ab-in.ab-stack,#aerbar-m .ab-in.ab-stack{flex-direction:column;height:44px;border-radius:12px;padding:2px 0}',
+      '#aerbar .ab-c,#aerbar-m .ab-c{position:relative;display:flex;align-items:center;padding:0 13px;min-width:0}',
+      '#aerbar .ab-stack .ab-c,#aerbar-m .ab-stack .ab-c{flex:1 1 0;padding:0 11px}',
+      '#aerbar-m .ab-in{max-width:none} #aerbar-m .ab-c,#aerbar-m .ab-t{flex-shrink:0;overflow:visible}',
+      '#aerbar .ab-f{position:absolute;left:0;top:0;bottom:0;background:rgba(79,124,255,.32);transition:width .6s ease}',
+      '#aerbar .ab-t{position:relative;overflow:hidden;text-overflow:ellipsis}',
+      '#aerbar .ab-t b{font-weight:600;color:#fff}',
+      '#aerbar .ab-ok .ab-t{color:#8ff0b5} #aerbar .ab-ok .ab-t b{color:#c9f7da}',
+      '#aerbar .ab-wait .ab-t{color:#c5cbe0} #aerbar .ab-wait .ab-f{background:rgba(154,158,182,.22)}',
+      '#aerbar .ab-bad .ab-t{color:#ffc27a} #aerbar .ab-bad .ab-f{background:rgba(245,166,35,.18)}',
+      '#aerbar .ab-s{flex:none;width:1px;margin:7px 0;background:rgba(255,255,255,.18)}',
+      '#aerbar .ab-l,#aerbar-m .ab-l{display:flex;align-items:center;padding:0 2px 0 13px;color:#9a9eb6}',
+      '#aerbar.quiet .ab-in{opacity:.8}'
+    ].join('\n'); document.head.appendChild(css); }
+    var el = document.createElement('div'); el.id = 'aerbar'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+    var me = document.createElement('div'); me.id = 'aerbar-m'; me.setAttribute('aria-hidden', 'true');
+    mw.appendChild(el); mw.appendChild(me); BAR.el = el; BAR.m = me; return el;
+  }
+  var _bw = {}, _bwN = 0;   /* natural width per exact html (the words do not change width between ticks) */
+  function barWidth(html) { if (_bw[html]) return _bw[html]; var me = BAR.m; if (!me) return 1e9; me.innerHTML = html; var w = me.firstChild ? me.firstChild.scrollWidth + 4 : 0; me.innerHTML = '';
+    if (++_bwN > 60) { _bw = {}; _bwN = 0; } if (w > 4) _bw[html] = w; return w; }
+  /* the free stretch of the bottom edge for a bar of height h whose bottom sits b px above the map's: everything visible
+     that reaches into that band, left of the map's middle pushes the left edge, right of it the right edge.
+     -> { left, max, b } in map pixels, or null (no room). The attribution counts: it is never covered. */
+  var BAR_AVOID = ['askc-fab', 'mph', 'gpsbar', 'gps-toggle', 'here-btn2', 'dp-day', 'dp-end', 'dp-chip', 'tilebar', 'route-slot'];
+  function barRoom(h, b) {
+    var mw = document.getElementById('mapwrap'); if (!mw) return null;
+    var mr = mw.getBoundingClientRect(); if (!mr.width) return null;
+    var bot = mr.bottom - b, top = bot - h, mid = mr.left + mr.width / 2, L = mr.left + 12, R = mr.right - 12;
+    var els = BAR_AVOID.map(function (id) { return document.getElementById(id); }).concat([].slice.call(mw.querySelectorAll('.leaflet-bottom .leaflet-control')));
+    els.forEach(function (e) {
+      if (!e || e.offsetParent === null) return; var cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return;
+      if (e.id === 'route-slot' && e.getAttribute('data-corner') === 'bl-desk') return;   /* the route card docks above the bar */
+      var r = e.getBoundingClientRect(); if (!r.width || !r.height || r.bottom <= top - 1 || r.top >= bot + 1) return;
+      if ((r.left + r.right) / 2 < mid) L = Math.max(L, r.right); else R = Math.min(R, r.left);
+    });
+    L += 10; R -= 10; if (R - L < 120) return null;
+    return { left: Math.round(L - mr.left), max: Math.floor(R - L), b: b };
+  }
+  /* the bottoms tried: level with the speed chip and the GPS buttons (12 px), else just above the map's attribution line */
+  function barBottoms() { var a = document.querySelector('#mapwrap .leaflet-control-attribution'), bs = [12];
+    if (a && a.offsetParent !== null) { var mr = document.getElementById('mapwrap').getBoundingClientRect(), r = a.getBoundingClientRect(); if (r.height) bs.push(Math.max(12, Math.ceil(mr.bottom - r.top) + 2)); }
+    return bs; }
+  function barPick(rows, quiet) {   /* -> { html, form, room } : the widest form that fits somewhere, else the narrowest, cut */
+    var forms = quiet ? ['quiet'] : BAR_FORMS, bs = barBottoms(), last = null;
+    for (var i = 0; i < forms.length; i++) {
+      var html = barHtml(rows, forms[i]), w = barWidth(html), h = forms[i] === 'stack' ? 44 : 36;
+      for (var j = 0; j < bs.length; j++) { var room = barRoom(h, bs[j]); if (room) { last = { html: html, form: forms[i], room: room }; if (w <= room.max) return last; } }
+    }
+    return last;
+  }
+  function renderBar() {
+    try {
+      if (document.hidden && !BAR.test) return;
+      var m = barModel(), el = (m && m.rows.length) ? barEl() : BAR.el;
+      if (!el) return;
+      if (!m || !m.rows.length) { if (el.style.display !== 'none') { el.style.display = 'none'; BAR.sig = ''; barMoved(); } return; }
+      var all = m.rows.every(function (r) { return r.s === 'ready'; }), key = m.rows.map(function (r) { return r.b; }).join('|');
+      if (!all) { BAR.allAt = 0; BAR.allKey = ''; } else if (!BAR.allAt || BAR.allKey !== key) { BAR.allAt = m.now; BAR.allKey = key; }
+      var quiet = all && m.now - BAR.allAt >= BAR.quietMs;
+      el.style.display = 'flex';
+      var p = barPick(m.rows, quiet);
+      if (!p) { el.style.visibility = 'hidden'; el.innerHTML = ''; BAR.sig = ''; }
+      else {
+        var sig = p.html + '|' + p.room.left + '|' + p.room.max + '|' + p.room.b;
+        if (BAR.sig !== sig) { el.innerHTML = p.html; el.classList.toggle('quiet', quiet); el.setAttribute('data-form', p.form);
+          el.style.visibility = ''; el.style.left = p.room.left + 'px'; el.style.width = p.room.max + 'px'; el.style.bottom = p.room.b + 'px'; BAR.sig = sig; }
+      }
+      var pl = el.style.visibility + '|' + el.style.bottom + '|' + el.style.left + '|' + (el.firstChild ? el.firstChild.offsetWidth + 'x' + el.firstChild.offsetHeight : 0);
+      if (pl !== BAR.lastPlace) { BAR.lastPlace = pl; barMoved(); }
+    } catch (e) {}
+  }
+  function barMoved() { try { if (typeof window.placeRouteSlot === 'function') window.placeRouteSlot(); } catch (e) {} }
+  setInterval(renderBar, 2000); window.addEventListener('resize', function () { setTimeout(renderBar, 60); });
   window.DeskImagery = {
+    /* desk-p88: the aerials status bar. TEST ONLY: test(fn) feeds it { list, st, checks, build, now }; quiet(ms) sets the minute */
+    bar: { render: renderBar, model: barModel, county: barCounty, test: function (fn) { BAR.test = fn || null; BAR.sig = ''; BAR.allAt = 0; renderBar(); },
+      quiet: function (ms) { BAR.quietMs = ms; }, el: function () { return BAR.el; } },
     parcelAerial: function (o) { return parcelAerial(o).catch(function (e) { console.warn('parcel aerial', e); return null; }); },
     aerialStats: function () { return PA; }, aerialReport: aerialReport,
     /* TEST ONLY (harness): forget the self-tests so the next tick runs them again; run one ahead county's tile test now */

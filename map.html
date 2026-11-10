@@ -1045,7 +1045,7 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
     <div id="nppanel" style="display:none"></div>
     <div class="search">
       <input id="q" placeholder="Seq or street  /" aria-label="Find a seq or street" autocomplete="off">
-      <select id="order" title="List order" aria-label="List order"><option value="route">Drive List</option><option value="near">Closest to Me</option><option value="view">On Screen</option></select>
+      <select id="order" title="List order" aria-label="List order"><option value="route">Drive List</option><option value="near">Closest</option><option value="view">On Screen</option></select>
     </div>
     <div id="list"></div>
     <div id="strip" title="Open the log (L)"></div>
@@ -1067,16 +1067,16 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
       <div class="h"><span id="pos-dot">○</span><span id="pos-h">No position yet</span></div>
       <div class="l2" id="pos-l2">Plug in the GPS puck and press Connect.</div>
       <div class="btns">
-        <button class="sbtn" id="gps-btn">Connect GPS puck</button>
+        <button class="sbtn" id="gps-btn">Connect GPS</button>
         <button class="sbtn" id="geo-btn" style="display:none">Use laptop location</button>   <!-- retired from the panel (Dustin 10/11): the puck is the only position source -->
         <button class="sbtn" id="here-btn" style="display:none" title="TEST ONLY: put my position at the centre of the map">📍 I'm here (test)</button>
-        <button class="sbtn" id="follow-btn" title="G">Follow me</button>
+        <button class="sbtn" id="follow-btn" title="G">Follow Me</button>
       </div>
     </div>
     <div class="hud" id="tilebar">
       <div class="row2"><b>Map</b><button class="sbtn on" data-base="topo">Streets</button><button class="sbtn" data-base="img">Imagery</button></div>
       <div class="row2" style="font-size:var(--fs-sm);color:var(--muted);gap:10px"><span><i class="kdot" style="background:#1f6fe5"></i>Not taken</span><span><i class="kdot" style="background:var(--success)"></i>Done, clearing</span><span><i class="kdot" style="background:var(--danger)"></i>Needs something</span></div>
-      <div class="row2"><b>Driven</b><button class="sbtn" id="show-driven" title="Finished dots leave the map on their own. Show them again in green.">Show driven</button></div>
+      <div class="row2"><b>Driven</b><button class="sbtn" id="show-driven" title="Finished dots leave the map on their own. Show them again in green.">Show Driven</button></div>
       <div class="row2"><button class="sbtn" id="prep-btn">No Signal</button></div><div id="prep-st" style="line-height:1.4"></div>
     </div>
     <div class="hud" id="route-slot" style="display:none;left:12px;top:150px;max-width:340px;padding:10px 12px"><div id="route-slot-body"></div></div>
@@ -1142,7 +1142,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p86';
+var DESK_BUILD = 'desk-p88';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -2160,7 +2160,19 @@ window.__deskPingReply = function(j){
 // A PROVEN different job (the session's jobFolder names another county) gets the
 // phone's clean slate first: logs, shipped, ai* and photoCounts cleared + resetNonce.
 var DRIVE_FILES_BASE = '/LHV Consulting Work/_COUNTY ENGINE/DRIVE FILES';
-var _jobPublishedFor = null, _jobPublishing = false;
+var _jobPublishedFor = null, _jobPublishing = false, _cachedDayDriver = null;
+/* desk-p87 (audit 11/10 F7) HAND-OFF WIPE GUARD: a laptop handed to another driver can boot with the old initials still
+   saved, so the old driver's cached day opens as "own" until the key's sign-in says who this is. At the publish the
+   signed-in driver is known: a cached day loaded by someone else is never published; it is removed from this laptop
+   (kv day) and the start screen comes back, where today's county opens by itself from the new driver's schedule. */
+async function _handoffGuard(){
+  if (!state.jobFromCache || !_cachedDayDriver || !DRIVER || _cachedDayDriver === String(DRIVER).toUpperCase()) return false;
+  console.log('[desk] cached day belongs to ' + _cachedDayDriver + ', signed in as ' + DRIVER + ': not published, removed from this laptop');
+  try { var d = await DB.get('kv', 'day'); if (d && String(d.driver || '').toUpperCase() === _cachedDayDriver) await DB.del('kv', 'day'); } catch (e) {}
+  _cachedDayDriver = null; _jobPublishedFor = _jobSig();
+  try { showStart(); } catch (e) {}
+  return true;
+}
 function jobLabelStr(){ var j = state.job || {}; return [j.county, j.company, j.date].filter(Boolean).join(' · '); }
 function _jobMeta(){ var j = state.job || {};   // bucket mode: company is the bucket → null, exactly like the phone
   return { company: null, state: j.state || null, county: j.county || null, year: j.year || String(j.date||'').split('-')[0] || null, bucket: j.bucket || null }; }
@@ -2169,6 +2181,7 @@ function publishJob(){
   if (LOOK) return;   // look-only never publishes a job (its writes are dropped anyway) — and never follows/guards the live session
   if (!link || !link.connected || !state.job || !state.job.bucket || _jobPublishing) return;
   var sig = _jobSig(); if (_jobPublishedFor === sig) return;
+  if (state.jobFromCache && _cachedDayDriver && DRIVER && _cachedDayDriver !== String(DRIVER).toUpperCase()) { _handoffGuard(); return; }
   _jobPublishing = true;
   var b = state.job.bucket, jf = DRIVE_FILES_BASE + '/' + b;
   withTimeout(link.once('jobFolder'), 15000).then(function(prev){
@@ -2350,7 +2363,7 @@ async function startDay(job, seqs, opt){
     toast(_stale.length + ' unsent change(s) for ' + _stale[0].patch.bucket + ' were dropped (new county loaded)', 6000);
   }
   if (!prev || !prev.job || prev.job.bucket !== job.bucket) { _serverLogs = {}; _photoCountsRaw = {}; _shippedSeqs = {}; _cameraSeq = null; state.currentSeq = null; }
-  state.job = job; state.seqs = seqs; indexRows(); state.jobFromCache = false;
+  state.job = job; state.seqs = seqs; indexRows(); state.jobFromCache = false; _cachedDayDriver = null;
   await DB.put('kv', 'day', { job: job, seqs: seqs, driver: DRIVER || null, loadedAt: Date.now() });
   var snap = await DB.get('kv', 'snap:' + job.bucket); if (snap) restoreSnap(snap);
   $('start').style.display = 'none';
@@ -2917,7 +2930,7 @@ async function shipSession(opts){
   }
   if (_outbox.length) { if (auto) { flushOutbox(); return _shipQWait('changes still sending'); } await alertBox('Sending your changes first', _outbox.length + ' change(s) are still being sent. Give it a few seconds, then SHIP.'); flushOutbox(); return; }
   if (auto && _camSyncState() === 'stale' && (Number((_camSync && _camSync.pending) || 0) > 0 || Number(_camSync && _camSync.idb) < 0)) return _shipQWait('camera last said photos were still uploading');
-  if (!auto && _camSyncState() === 'stale') { if (!(await confirmBox('Camera not reporting', 'The camera phone is not reporting its upload queue.\n\nIt may be asleep, closed, or out of signal — so I cannot tell whether photos are still uploading.\n\nOpen the camera and wait for the green banner, or ship anyway?', 'Ship anyway'))) return; }
+  if (!auto && _camSyncState() === 'stale') { if (!(await confirmBox('Camera not reporting', 'The camera phone is not reporting its upload queue.\n\nIt may be asleep, closed, or out of signal — so I cannot tell whether photos are still uploading.\n\nOpen the camera and wait for the green banner, or ship anyway?', 'Ship Anyway'))) return; }
   if (_camSyncState() === 'live' && Number(_camSync && _camSync.idb) < 0) { if (auto) return _shipQWait('camera cannot save photos'); await alertBox('Do not ship', '⛔ The camera phone reports it CANNOT SAVE PHOTOS (IndexedDB dead).\n\nIts unsent frames exist only in memory. Keep that tab open until the red banner clears, then ship.'); return; }
   var _pend = Number((_camSync && _camSync.pending) || 0);
   if (_pend > 0) {
@@ -2931,8 +2944,8 @@ async function shipSession(opts){
     if (!auto && !(await confirmBox('Duplicate frames only', '⇑ ' + _pend + ' photo(s) still queued, but every parcel they belong to is already COMPLETE:\n  SEQ ' + _redundant.join(', ') + '\n\nThose frames add nothing. Ship?', 'Ship'))) return;
   }
   var _parked = Number((_camSync && _camSync.parked) || 0);
-  if (_parked > 0 && !auto && !(await confirmBox('Failed uploads', '⚠ ' + _parked + ' photo(s) FAILED to upload and are parked.\n\nThose parcels will NOT ship until their photos land.\n\nShip everything else?', 'Ship the rest'))) return;
-  if (_dpOn()) { var _mk = _dpMarkedOpen(); if (_mk.length && !auto && !(await confirmBox('Marked, no photos heard', '🟣 You marked ' + _mk.length + ' parcel(s) driven, but no photos have come in for them:\n  SEQ ' + _mk.join(', ') + '\n\nA mark is not a close. If the camera still has their photos, let it upload first. Ship everything else?', 'Ship the rest'))) return; }
+  if (_parked > 0 && !auto && !(await confirmBox('Failed uploads', '⚠ ' + _parked + ' photo(s) FAILED to upload and are parked.\n\nThose parcels will NOT ship until their photos land.\n\nShip everything else?', 'Ship Rest'))) return;
+  if (_dpOn()) { var _mk = _dpMarkedOpen(); if (_mk.length && !auto && !(await confirmBox('Marked, no photos heard', '🟣 You marked ' + _mk.length + ' parcel(s) driven, but no photos have come in for them:\n  SEQ ' + _mk.join(', ') + '\n\nA mark is not a close. If the camera still has their photos, let it upload first. Ship everything else?', 'Ship Rest'))) return; }
   var logs = Object.values(state.logs);
   var complete = logs.filter(function(l){ return seqStatus(l) === 'complete'; });
   var incomplete = logs.filter(function(l){ return seqStatus(l) === 'incomplete'; }).length;
@@ -4209,6 +4222,9 @@ function placeRouteSlot(){
       if (r.width && r.bottom > _mr.top + _H / 2) _rr = Math.max(_rr, Math.round(_mr.right - r.left) + 10); });
     var _sp = $('mph'); if (_sp && _sp.offsetParent !== null) { var _sr = _sp.getBoundingClientRect(); if (_sr.height && _sr.left < _mr.left + _l + 40) _bot = Math.max(_bot, Math.round(_mr.bottom - _sr.top) + 8); }
     var _w = Math.min(520, _W - _l - _rr);
+    /* desk-p88: the aerials status bar on the bottom edge (desk/imagery.js): the card sits above it where they would meet */
+    var _ab = document.querySelector('#aerbar .ab-in'); if (_ab && $('aerbar').style.display !== 'none' && $('aerbar').style.visibility !== 'hidden') { var _ar = _ab.getBoundingClientRect();
+      if (_ar.height && _ar.left < _mr.left + _l + Math.max(ROUTE_MIN_W, _w) + 8) _bot = Math.max(_bot, Math.round(_mr.bottom - _ar.top) + 8); }
     el.classList.toggle('rt-tight', _w < ROUTE_TIGHT_W); el.setAttribute('data-corner', 'bl-desk');
     el.style.left = _l + 'px'; el.style.right = 'auto'; el.style.top = 'auto'; el.style.bottom = _bot + 'px';
     el.style.maxWidth = Math.max(ROUTE_MIN_W, _w) + 'px'; el.style.maxHeight = Math.round(_H / 2 - _bot - 12) + 'px'; el.style.overflowY = 'auto';
@@ -5010,8 +5026,11 @@ async function showStart(){
   // saved list is the fallback for when the folder cannot be read, and says its date.
   $('reopen').style.display = h ? '' : 'none';
   if (h) { $('reopen').textContent = 'Reopen Folder'; $('reopen').title = h.name; $('open-folder').textContent = 'Other Folder'; $('reopen').parentNode.insertBefore($('reopen'), $('open-folder')); }
-  var day = await DB.get('kv', 'day'); $('use-cache').style.display = (day && day.job) ? '' : 'none';
-  if (day && day.job) { var _old = String(day.job.date || '') < _lhvDate();
+  /* desk-p87 (audit 11/10 F7): the saved list is offered only when it is THIS driver's own day (the one-tap path used to
+     open another driver's county and publish it over the live session) */
+  var day = await DB.get('kv', 'day'), _mine = !!(day && day.job && day.driver && DRIVER && String(day.driver).toUpperCase() === String(DRIVER).toUpperCase());
+  $('use-cache').style.display = _mine ? '' : 'none';
+  if (_mine) { var _old = String(day.job.date || '') < _lhvDate();
     $('use-cache').textContent = (_old ? '⚠ ' : '') + 'Saved List · ' + day.job.bucket + ' ' + day.job.date;
     $('use-cache').title = _old ? 'An older list: tonight\'s rebuild is not in it.' : ''; }
   if (MOCK) { $('open-folder').textContent = 'Load mock drive file (' + MOCK.split('/').pop() + ')'; }
@@ -5030,7 +5049,9 @@ function takeSignin(){
 }
 $('open-folder').onclick = function(){ if (!takeSignin()) return; (MOCK ? loadFromMock(MOCK) : openFolder(null)).catch(function(e){ if (e && e.name === 'AbortError') return; pickerError(e); }); };
 $('reopen').onclick = async function(){ if (!takeSignin()) return; var h = await DB.get('kv', 'dirHandle'); openFolder(h).catch(function(e){ alertBox('Could not reopen', String(e && e.message || e)); }); };
-$('use-cache').onclick = async function(){ if (!takeSignin()) return; var day = await DB.get('kv', 'day'); state.job = day.job; state.seqs = day.seqs; indexRows(); state.jobFromCache = false;
+$('use-cache').onclick = async function(){ if (!takeSignin()) return; var day = await DB.get('kv', 'day');
+  if (!(day && day.job && day.driver && String(day.driver).toUpperCase() === String(DRIVER || '').toUpperCase())) { $('use-cache').style.display = 'none'; return; }
+  state.job = day.job; state.seqs = day.seqs; indexRows(); state.jobFromCache = true; _cachedDayDriver = String(day.driver).toUpperCase();
   var snap = await DB.get('kv', 'snap:' + day.job.bucket); if (snap) restoreSnap(snap); $('start').style.display = 'none'; bootLinkAndMap(); };
 
 // TEST ONLY (?test=1, Dustin 10/11): put the position at the map centre so Route here can be
@@ -5267,7 +5288,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
         try { document.title = 'Desk moved'; document.body.innerHTML = '<div style="font:600 var(--fs-lg) var(--sans);color:#ccc;padding:40px">The desk moved to another tab. You can close this one.</div>'; } catch (e) {}
         try { location.replace('about:blank'); } catch (e) {} }
       else if (m.t === 'here' && m.to === _me && !window.__deskDup) { window.__deskDup = true;
-        confirmBox('The desk is already open', 'Another Chrome tab has the desk open, maybe in a window you cannot see. Use this tab and the other one closes its desk. (Your unsent changes are kept.)', 'Use this tab').then(function(ok){
+        confirmBox('The desk is already open', 'Another Chrome tab has the desk open, maybe in a window you cannot see. Use this tab and the other one closes its desk. (Your unsent changes are kept.)', 'Use Tab').then(function(ok){
           if (ok) { _dc.postMessage({ t: 'takeover', from: _me }); window.__deskDup = false; toast('Desk is in this tab now; the other tab stepped down', 3500); } }); } };
     _dc.postMessage({ t: 'hello', id: _me });
   } catch (e) {}
@@ -5299,7 +5320,7 @@ window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedee
   var _ownDay = !!(day && day.job && day.driver && String(day.driver).toUpperCase() === String(DRIVER || '').toUpperCase());
   if (day && day.job && DRIVER && !_ownDay) console.log('[desk] cached day was loaded by ' + (day.driver || 'nobody') + ', not ' + DRIVER + ': not opening it');
   if (day && day.job && DRIVER && _ownDay && Q.get('fresh') !== '1') {
-    state.job = day.job; state.seqs = day.seqs; indexRows(); state.jobFromCache = true;
+    state.job = day.job; state.seqs = day.seqs; indexRows(); state.jobFromCache = true; _cachedDayDriver = String(day.driver).toUpperCase();
     var snap = await DB.get('kv', 'snap:' + day.job.bucket); if (snap) restoreSnap(snap);
     var aer = await DB.get('kv', 'aerials:' + day.job.bucket), tl = await DB.get('kv', 'tiles:' + day.job.bucket);
     bootLinkAndMap();
