@@ -695,23 +695,23 @@
     '.rt-mv .rt-ic{flex:0 0 auto;width:46px;height:46px;padding:4px;border-radius:10px;background:#1d3a6e;color:#fff}' +
     '.rt-mv.back .rt-ic{background:#5a3a10;color:#ffd08a}' +
     '.rt-mv .rt-turn{margin-top:0}' +
-    '.rt-then{display:flex;align-items:center;gap:7px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.1);font:600 13.5px var(--font-display,system-ui);color:#c3c7da;overflow-wrap:anywhere}' +
+    '.rt-then{display:flex;align-items:center;gap:7px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.1);font:600 var(--fs-sm) var(--sans);color:#c3c7da;overflow-wrap:anywhere}' +
     '.rt-then .rt-ic2{flex:0 0 auto;width:24px;height:24px;padding:2px;border-radius:6px;background:#2a3350;color:#dfe6ff}' +
-    '.rt-then b{color:#8fc0ff;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.5px;white-space:nowrap;flex:0 0 auto}' +
-    '.rt-k{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 13px var(--font-display,system-ui);letter-spacing:.6px;text-transform:uppercase;color:#8fc0ff}' +
+    '.rt-then b{color:#8fc0ff;font-weight:600;text-transform:uppercase;font-size:var(--fs-xs);letter-spacing:.5px;white-space:nowrap;flex:0 0 auto}' +
+    '.rt-k{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 var(--fs-sm) var(--sans);letter-spacing:.6px;text-transform:uppercase;color:#8fc0ff}' +
     '.rt-k b{font-weight:700;color:#fff}' +
-    '.rt-k .rt-stop{margin-left:auto;margin-right:24px;text-transform:none;letter-spacing:0;background:#4a1420;border:1.5px solid #e05555;color:#ffd0d0;border-radius:9px;padding:5px 10px;font:600 14px var(--font-display,system-ui)}' +
+    '.rt-k .rt-stop{margin-left:auto;margin-right:24px;text-transform:none;letter-spacing:0;background:#4a1420;border:1.5px solid #e05555;color:#ffd0d0;border-radius:9px;padding:5px 10px;font:600 var(--fs-md) var(--sans)}' +
     '.rt-k .rt-stop:hover{background:#6a1a2c;color:#fff}' +
-    '.rt-st{font:700 clamp(20px,2.1vw,30px)/1.12 var(--font-display,system-ui);color:#fff;margin-top:4px;overflow-wrap:anywhere}' +
-    '.rt-ct{font:600 15px var(--font-display,system-ui);color:#d0d6e8;overflow-wrap:anywhere}' +
+    '.rt-st{font:700 var(--fs-xl)/1.12 var(--sans);color:#fff;margin-top:4px;overflow-wrap:anywhere}' +
+    '.rt-ct{font:600 var(--fs-md) var(--sans);color:#d0d6e8;overflow-wrap:anywhere}' +
     '.rt-d{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin-top:8px}' +
-    '.rt-d .d{font:700 26px var(--font-display,system-ui);color:#fff}.rt-d .t{font:700 22px var(--font-display,system-ui);color:#2ecc8a}' +
-    '.rt-d .s{font:600 12.5px var(--font-display,system-ui);color:#9a9eb6}' +
-    '.rt-turn{margin-top:6px;font:600 clamp(17px,1.6vw,22px)/1.2 var(--font-display,system-ui);color:#9fc0ff;overflow-wrap:anywhere}' +
-    '.rt-turn.back{color:#ffd08a}.rt-turn.msg{color:#ffd08a;font-size:17px}' +
-    '.rt-n{margin-top:4px;font:600 12.5px var(--font-display,system-ui);color:#9a9eb6;overflow-wrap:anywhere}' +
+    '.rt-d .d{font:700 var(--fs-xl) var(--sans);color:#fff}.rt-d .t{font:700 var(--fs-xl) var(--sans);color:#2ecc8a}' +
+    '.rt-d .s{font:600 var(--fs-sm) var(--sans);color:#9a9eb6}' +
+    '.rt-turn{margin-top:6px;font:600 var(--fs-lg)/1.2 var(--sans);color:#9fc0ff;overflow-wrap:anywhere}' +
+    '.rt-turn.back{color:#ffd08a}.rt-turn.msg{color:#ffd08a;font-size:var(--fs-lg)}' +
+    '.rt-n{margin-top:4px;font:600 var(--fs-sm) var(--sans);color:#9a9eb6;overflow-wrap:anywhere}' +
     '.rt-n:empty{display:none}' +
-    '.rt-close{margin-top:8px;background:#232635;border:1px solid rgba(255,255,255,.15);color:#f0f0f0;border-radius:9px;padding:6px 12px;font:600 13px var(--font-display,system-ui)}';
+    '.rt-close{margin-top:8px;background:#232635;border:1px solid rgba(255,255,255,.15);color:#f0f0f0;border-radius:9px;padding:6px 12px;font:600 var(--fs-sm) var(--sans)}';
 
   function attach(api) {
     var L = window.L;
@@ -798,10 +798,9 @@
       if (ap) { var al = [[ap.fromLat, ap.fromLng], [ap.lat, ap.lng]];
         if (!M.appr) M.appr = L.polyline(al, { color: '#2f7bff', weight: 5, opacity: .95, dashArray: '10 10', interactive: false }).addTo(m); else M.appr.setLatLngs(al); }
       else if (M.appr) { m.removeLayer(M.appr); M.appr = null; }
-      if (!M.fitted && ll.length > 1) {          // once per press: show the whole way there
-        M.fitted = true;
-        try { m.fitBounds(L.latLngBounds(ll), { paddingTopLeft: [70, 280], paddingBottomRight: [40, 150], maxZoom: 17 }); } catch (e) {}
-      }
+      /* desk-p86 (audit 11/10 F10, Dustin 10/26: the map zoom stays where the driver put it): Route no longer fits the
+         map to the whole route; the line is drawn and the view is his. */
+      M.fitted = true;
     }
 
     // ── the banner: SEQ + the full address in big type, distance, time, the next turn ──
@@ -821,6 +820,7 @@
         h += '<div class="rt-turn msg">Loading the road file…</div>';
       } else if (v && v.routing) {
         var s = v.step, txt = s.type === 'arrive' ? 'Arrive' + (v.arriveSide ? ' — parcel ' + v.arriveSide : '') : s.text;
+        if (window.LSNative && window.LSNative.app) txt = String(txt).replace(' on the laptop', '');   /* desk-p73: the app is on an iPad */
         var turn = v.turnAround ? 'Turn around when safe — then ' + txt.charAt(0).toLowerCase() + txt.slice(1) + (v.stepInM > 30 ? ' in ' + RT.fmtDist(v.stepInM) : '')
           : (v.stepInM > 30 ? 'In ' + RT.fmtDist(v.stepInM) + ': ' : '') + txt;
         h += '<div class="rt-d"><span class="d">' + RT.fmtDist(v.remM) + '</span><span class="t">' + RT.fmtTime(v.etaS) + '</span><span class="s">' + (v.approach ? 'about · ' : 'by road · ') + RT.fmtDist(v.straightM) + ' straight</span></div>';

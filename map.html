@@ -1077,10 +1077,10 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
       <div class="row2"><b>Map</b><button class="sbtn on" data-base="topo">Streets</button><button class="sbtn" data-base="img">Imagery</button></div>
       <div class="row2" style="font-size:var(--fs-sm);color:var(--muted);gap:10px"><span><i class="kdot" style="background:#1f6fe5"></i>Not taken</span><span><i class="kdot" style="background:var(--success)"></i>Done, clearing</span><span><i class="kdot" style="background:var(--danger)"></i>Needs something</span></div>
       <div class="row2"><b>Driven</b><button class="sbtn" id="show-driven" title="Finished dots leave the map on their own. Show them again in green.">Show driven</button></div>
-      <div class="row2"><button class="sbtn" id="prep-btn">Prepare for no signal</button></div><div id="prep-st" style="line-height:1.4"></div>
+      <div class="row2"><button class="sbtn" id="prep-btn">No Signal</button></div><div id="prep-st" style="line-height:1.4"></div>
     </div>
     <div class="hud" id="route-slot" style="display:none;left:12px;top:150px;max-width:340px;padding:10px 12px"><div id="route-slot-body"></div></div>
-    <button id="dp-day" title="Today: what is left, what fits before dark, pace">⏱</button>
+    <button id="dp-day" title="Today: what is left, work-until time">⏱</button>
     <div id="dp-daycard"></div>
     <button id="dp-end" title="Set today's end point (hotel, or toward the next county)">🏁</button>
     <div id="dp-chip"><div>Tap the map where today ends <a id="dp-here">or here tonight</a> <a id="dp-cancel">cancel</a></div>
@@ -1099,10 +1099,11 @@ html body #log .stat[data-f="incomplete"]{order:4}html body #log .stat[data-f="u
     <label class="hint" style="display:block;margin-top:10px">Driver key (from your camera link, once only)</label>
     <input id="in-key" placeholder="already saved on this laptop" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font:600 var(--fs-md) var(--sans);padding:9px 10px">
   </div>
-  <button class="btn p" id="open-folder">Open today's drive file folder…</button>
-  <p class="hint">Pick <b>Dropbox › LHV Consulting Work › _COUNTY ENGINE › DRIVE FILES › &lt;COUNTY&gt;</b> (the folder holding the .xlsx and <b>aerials</b>).</p>
-  <button class="btn g" id="reopen" style="display:none">Reopen last folder</button>
-  <button class="btn g" id="use-cache" style="display:none">Continue with the saved list (no signal)</button>
+  <!-- desk-p86 (audit 11/10 F15): today's county opens by itself from the schedule; the folder buttons stay as a fallback only -->
+  <p class="hint" id="start-auto">Today's county opens by itself once the laptop has signal. Nothing to pick.</p>
+  <button class="btn g" id="open-folder">Open Folder</button>
+  <button class="btn g" id="reopen" style="display:none">Reopen Folder</button>
+  <button class="btn g" id="use-cache" style="display:none">Saved List</button>
   <div id="prog"></div>
 </div></div>
 
@@ -1141,7 +1142,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p85';
+var DESK_BUILD = 'desk-p86';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1171,8 +1172,7 @@ var _toastT = null;
 /* desk-p66: on the Kestrel app the words name the iPad, never a laptop or a puck (laptops: unchanged) */
 function _devText(s){
   if (!(window.LSNative && window.LSNative.app) || s == null) return s;
-  return String(s).replace(/Laptop is offline<\/b> — reconnect Wi-Fi to your iPhone hotspot\./g, 'iPad is offline</b> — it reconnects by itself.')
-    .replace(/connect the GPS puck/g, 'wait for the iPad\'s GPS').replace(/GPS puck/g, 'iPad GPS')
+  return String(s).replace(/connect the GPS puck/g, 'wait for the iPad\'s GPS').replace(/GPS puck/g, 'iPad GPS')
     .replace(/\bthis laptop\b/g, 'this iPad').replace(/\bthe laptop\b/g, 'the iPad').replace(/\bLaptop\b/g, 'iPad').replace(/\blaptop\b/g, 'iPad');
 }
 function toast(msg, ms){ msg = _devText(msg); _noteKeep(msg); var t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(_toastT); _toastT = setTimeout(function(){ t.style.display = 'none'; }, ms || 2600); }
@@ -2050,7 +2050,7 @@ function _netBanner(on){
     b.style.cssText = 'position:' + (inMap ? 'absolute' : 'fixed') + ';left:50%;top:64px;transform:translateX(-50%);z-index:1500;max-width:min(560px,calc(100% - 32px));'
       + 'background:#2b2a1c;border:1px solid #b9a24a;color:#f4ecc8;border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.45);'
       + 'font:600 var(--fs-md)/1.35 var(--sans)"Segoe UI",sans-serif;text-align:center;pointer-events:none';
-    b.innerHTML = _devText('<b style="font-weight:600">Laptop is offline</b> — reconnect Wi-Fi to your iPhone hotspot.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>');
+    b.innerHTML = _devText('<b style="font-weight:600">Laptop is offline</b> — it reconnects by itself.<br><span style="font-weight:500;color:#d9d0a8">The map keeps working; it catches up when it\'s back.</span>');
     (inMap ? mw : document.body).appendChild(b);
   }
   if (b) b.style.display = on ? 'block' : 'none';
@@ -2180,7 +2180,8 @@ function publishJob(){
       var _srv = String(prev).split('/').pop();
       // desk-p43: if the session's county is one of the driver's scheduled counties saved on this laptop, open it — no driver step
       Promise.resolve(window._todayOpen ? window._todayOpen(_srv) : false).catch(function(){ return false; }).then(function(ok){ if (ok) return;
-        try { alertBox('Load your drive file', 'Your session is on ' + _srv + ', but this laptop had ' + b + ' saved. Tap Load drive file and pick ' + _srv + ' (or the county you are driving).'); } catch (e) {}
+        /* desk-p86 (audit 11/10 F15): no manual step for the driver; the "Load drive file" link this named is hidden since p85 */
+        try { alertBox('Different county', 'Your session is on ' + _srv + ', but this laptop had ' + b + ' saved. Ask Claude in Kestrel; nothing to pick here.'); } catch (e) {}
         try { showStart(); } catch (e) {} });
       throw new Error('cached job differs from live job');
     }
@@ -2598,6 +2599,9 @@ function _vcRecentPace(ts){
   return gaps / (active / VC_HOUR_MS);
 }
 function _vcPace(){
+  /* desk-p86 (audit 11/10 F12; Dustin 10/30 "pace is a function of density", never today's pace): the On Screen option
+     shows the COUNT only until a density rate reaches the laptop. The pace code below is kept for that day. */
+  if (!window.__vcPaceOn) return null;
   var day = _lhvDate(), ts = [];
   Object.keys(state.logs || {}).forEach(function(k){ var l = state.logs[k], t = l && l.closed && String(l.driveDate || day) === day ? Number(l.closedAt || 0) : 0; if (t > 0) ts.push(t); });
   ts.sort(function(a, b){ return a - b; });
@@ -2745,9 +2749,9 @@ function setupState(){
 }
 var SETUP_ITEMS = [
   ['charger', 'Laptop charging', 'Plug the laptop charger in. The battery icon (bottom right) shows a plug.'],
-  ['online', 'Laptop online', 'Turn on Personal Hotspot on your phone, then join it from the laptop\'s Wi-Fi. No cable (the direct line is retired).'],
+  ['online', 'Laptop online', 'The laptop joins its internet by itself; it shows ✓ when it is on.'],
   ['gps', 'GPS puck connected', 'Plug the puck in, click ◎ Connect GPS, pick the puck, click again for Centered.'],
-  ['camera', 'Camera on', 'Open the camera link in Safari on the phone and keep it on screen.'],
+  ['camera', 'Camera on', 'Shows ✓ once the camera phone is open on today\'s county.'],
 ];
 var _camStartedDay = '';
 function _todayKey(){ return new Date().toLocaleDateString('en-CA'); }
@@ -3835,14 +3839,14 @@ async function renderCacheStatus(){
 }
 async function prepareOffline(){   // ROUTING-only prototype (tile prefetch): off until Dustin decides — see README
   if (!ROUTING || !state.job) return;
-  if (!navigator.onLine && !(link && link.connected)) { toast('Needs signal — turn on the hotspot first', 4000); return; }
+  if (!navigator.onLine && !(link && link.connected)) { toast('Needs signal; it runs when the laptop is back online', 4000); return; }
   var pts = listable().map(ll).filter(Boolean); if (!pts.length) return;
   var b = L.latLngBounds(pts).pad(0.03), urls = [], svc = { topo: 'USGSTopo', img: 'USGSImageryTopo' }[_base] || 'USGSTopo';
   for (var z = 11; z <= 16; z++) {
     var x0 = lon2x(b.getWest(), z), x1 = lon2x(b.getEast(), z), y0 = lat2y(b.getNorth(), z), y1 = lat2y(b.getSouth(), z);
     for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) urls.push('https://basemap.nationalmap.gov/arcgis/rest/services/' + svc + '/MapServer/tile/' + z + '/' + y + '/' + x);
   }
-  if (urls.length > 6000) { if (!(await confirmBox('Large area', urls.length + ' map tiles cover today\'s list. That can take several minutes on a hotspot. Continue?', 'Continue'))) return; }
+  if (urls.length > 6000) { if (!(await confirmBox('Large area', urls.length + ' map tiles cover today\'s list. That takes several minutes.', 'Start'))) return; }
   var done = 0, fail = 0, i = 0;
   var worker = async function(){ while (i < urls.length) { var u = urls[i++]; try { await fetch(u, { mode: 'no-cors' }); done++; } catch (e) { fail++; }
     if ((done + fail) % 25 === 0) $('prep-st').textContent = 'tiles ' + (done + fail) + ' / ' + urls.length; } };
@@ -4195,6 +4199,22 @@ var ROUTE_TIGHT_W = 430, ROUTE_MIN_W = 210;
 function placeRouteSlot(){
   var el = $('route-slot'); if (!el || el.style.display === 'none') return;
   if (window.LSNative && window.LSNative.app) { _appPlaceRoute(el); return; }   /* desk-p73: the app's own spot (below) */
+  /* desk-p86 (audit 11/10 F10; Dustin 11/2 "map middle stays clear", routing card bottom-left): on the laptop too the box
+     docks bottom-left, beside the Ask Claude button, clear of the right-hand column, never past the map's middle line. */
+  var _mw = $('mapwrap');
+  if (_mw && _mw.clientWidth >= 560 && _mw.clientHeight >= 360) {
+    var _W = _mw.clientWidth, _H = _mw.clientHeight, _l = 76, _rr = 64, _bot = 12, _mr = _mw.getBoundingClientRect();
+    /* clear of the lower-right column (Map panel, ⏱, 🏁) and above the speed chip beside the Ask Claude button */
+    ['tilebar', 'dp-day', 'dp-end'].forEach(function(id){ var e = $(id); if (!e || e.offsetParent === null) return; var r = e.getBoundingClientRect();
+      if (r.width && r.bottom > _mr.top + _H / 2) _rr = Math.max(_rr, Math.round(_mr.right - r.left) + 10); });
+    var _sp = $('mph'); if (_sp && _sp.offsetParent !== null) { var _sr = _sp.getBoundingClientRect(); if (_sr.height && _sr.left < _mr.left + _l + 40) _bot = Math.max(_bot, Math.round(_mr.bottom - _sr.top) + 8); }
+    var _w = Math.min(520, _W - _l - _rr);
+    el.classList.toggle('rt-tight', _w < ROUTE_TIGHT_W); el.setAttribute('data-corner', 'bl-desk');
+    el.style.left = _l + 'px'; el.style.right = 'auto'; el.style.top = 'auto'; el.style.bottom = _bot + 'px';
+    el.style.maxWidth = Math.max(ROUTE_MIN_W, _w) + 'px'; el.style.maxHeight = Math.round(_H / 2 - _bot - 12) + 'px'; el.style.overflowY = 'auto';
+    return;
+  }
+  el.style.bottom = 'auto'; el.style.maxHeight = ''; el.removeAttribute('data-corner');
   var ab = $('addrbanner'), mb = $('mapbtns'), mw = $('mapwrap'), top = 12, left = 56;
   if (mb && mb.offsetParent !== null) left = Math.max(left, mb.offsetLeft + mb.offsetWidth + 8);   // clear the ⇆ Split button too
   var maxW = Math.min(520, (mw ? mw.clientWidth : 600) - left - 12);
@@ -4882,10 +4902,10 @@ function _dpRenderBox(){
   var i = _dp.info, e = _dpEnd(), marks = _dpMarkedOpen().length, h = '';
   h += e ? '🏁 <b>' + esc(e.label || 'End point') + '</b>' : '🏁 <span class="m">No end point yet: tap 🏁 on the map</span>';
   if (i) {
-    h += '<br><b>' + i.left + '</b> left' + (i.fits != null ? ' · about <b>' + i.fits + '</b> fit before dark' : ' · <span class="m">fit: once there is a pace</span>') +
-      (e ? ' · <b>' + Math.round(i.toEnd) + ' min</b> to end' : '');
+    /* desk-p86 (audit 11/10 F12): counts only. "fit before dark", "pace today", "need N/hr" and "behind" all came from
+       today's own pace, which is not how pace is set (density). */
+    h += '<br><b>' + i.left + '</b> left' + (e ? ' · <b>' + Math.round(i.toEnd) + ' min</b> to end' : '');
     if (i.until != null) h += '<br><span class="m">Work until ' + _dpHm(i.until) + ' · sunset ' + _dpHm(i.sunset) + '</span>';
-    if (i.fits != null && i.left > i.fits) h += '<br><span class="m">About ' + (i.left - i.fits) + ' won\'t fit today</span>';
   } else h += '<br><span class="m">Best next starts with a GPS fix</span>';
   if (marks) h += '<br><span style="color:#c9a6ff">🟣 ' + marks + ' marked, waiting for the camera</span>';
   // PURPLE vs THE CAMERA (10/24): a pin held purple 2+ hours that the camera (heard recently) is NOT holding and never
@@ -4898,7 +4918,7 @@ function _dpRenderBox(){
   // ON PACE? (Dustin 10/21: "and if you are moving at the rate you think you are") — the rate needed to finish
   // what is left before work-until (less the drive to the end point) vs today's own rate. Never red: amber at worst.
   var pl = '';
-  if (i && i.until != null) {
+  if (window.__vcPaceOn && i && i.until != null) {
     var nowD = new Date(), hrsLeft = Math.max(0, (i.until - (nowD.getHours() * 60 + nowD.getMinutes()) - (i.toEnd || 0)) / 60), need = hrsLeft > 0 ? i.left / hrsLeft : null;
     if (i.pace) pl += '<br>Pace today: <b>' + i.pace.toFixed(1) + '</b>/hr';
     else pl += '<br><span class="m">Pace today: after 20 minutes of closes</span>';
@@ -4989,11 +5009,11 @@ async function showStart(){
   // its drive file (one browser permission tap) so last night's rebuild loads; the
   // saved list is the fallback for when the folder cannot be read, and says its date.
   $('reopen').style.display = h ? '' : 'none';
-  if (h) { $('reopen').textContent = 'Open today\'s drive file: ' + h.name; $('reopen').className = 'btn p'; $('open-folder').className = 'btn g'; $('open-folder').textContent = 'Pick a different county folder…'; $('reopen').parentNode.insertBefore($('reopen'), $('open-folder')); }
+  if (h) { $('reopen').textContent = 'Reopen Folder'; $('reopen').title = h.name; $('open-folder').textContent = 'Other Folder'; $('reopen').parentNode.insertBefore($('reopen'), $('open-folder')); }
   var day = await DB.get('kv', 'day'); $('use-cache').style.display = (day && day.job) ? '' : 'none';
   if (day && day.job) { var _old = String(day.job.date || '') < _lhvDate();
-    $('use-cache').textContent = (_old ? '⚠ ' : '') + 'Use the saved list from ' + day.job.date + ' (' + day.job.bucket + ')' + (h ? ' — only if the folder will not open' : '');
-    $('use-cache').title = _old ? 'This is an older list: tonight\'s rebuild is not in it. Open the folder when you can.' : ''; }
+    $('use-cache').textContent = (_old ? '⚠ ' : '') + 'Saved List · ' + day.job.bucket + ' ' + day.job.date;
+    $('use-cache').title = _old ? 'An older list: tonight\'s rebuild is not in it.' : ''; }
   if (MOCK) { $('open-folder').textContent = 'Load mock drive file (' + MOCK.split('/').pop() + ')'; }
   if (_inApp()) { try { var _sb = $('start').querySelector('.box'); _sb.querySelector('h1').textContent = 'Ledgerstone · Map';
     _sb.querySelector('p').textContent = 'Today\'s county opens by itself once the app has it on this iPad. Nothing to pick.';
@@ -5005,7 +5025,7 @@ function takeSignin(){
   if (!/^[A-Z]{2,4}$/.test(d)) { alertBox('Driver initials', 'Type your initials (e.g. RF).'); return false; }
   DRIVER = d; localStorage.setItem('fieldlog_driver_id', d);
   var k = String($('in-key').value || '').trim(); if (k) localStorage.setItem('lhv_driver_key', k);
-  if (!localStorage.getItem('lhv_driver_key')) { alertBox('Driver key needed', 'Paste your driver key once (Dustin has it). It is saved on this laptop.'); return false; }
+  if (!localStorage.getItem('lhv_driver_key')) { alertBox('Driver key needed', 'This laptop has no driver key yet. Ask Claude in Kestrel for your laptop link; it carries the key.'); return false; }
   return true;
 }
 $('open-folder').onclick = function(){ if (!takeSignin()) return; (MOCK ? loadFromMock(MOCK) : openFolder(null)).catch(function(e){ if (e && e.name === 'AbortError') return; pickerError(e); }); };
@@ -5202,17 +5222,26 @@ function _applyRedeemedNow(v, quiet){
 }
 window.deskAutoSheet = deskAutoSheet; window._deskApplyRedeemedNow = _applyRedeemedNow;
 (function(){
+  /* desk-p86 (audit 11/10 F2): the listener waits for the driver key's sign-in (the rule reads only driver_ sign-ins)
+     and a refused or dropped listen is attached again after a minute, never left dead for the day. */
   var watch = function(){
     try {
       var B = state.job && state.job.bucket; if (!B || _autoSheet.rnBucket === B || MOCK || !window.firebase || !firebase.database) return;
+      if (_autoSheet.rnRetryAt && Date.now() < _autoSheet.rnRetryAt) return;
+      var _u = firebase.auth && firebase.auth().currentUser; if (!_u) return;
       if (_autoSheet.rnRef) _autoSheet.rnRef.off();
       _autoSheet.rnBucket = B; _autoSheet.rnRef = firebase.database().ref('drive/redeemedNow/' + B);
-      var first = true;
-      _autoSheet.rnRef.on('value', function(snap){ var v = snap.val(); _autoSheet.rnLast = v;
+      var first = true, _myRef = _autoSheet.rnRef;
+      _autoSheet.rnRef.on('value', function(snap){ var v = snap.val(); _autoSheet.rnLast = v; _autoSheet.rnFails = 0;
         var seen = {}; try { seen = JSON.parse(localStorage.getItem('desk_rn_seen_' + B) || '{}'); } catch (e) {}
         var lastAt = Number(((v || {})._last || {}).at || 0), isNew = lastAt && lastAt !== Number(seen.at || 0) && Date.now() - lastAt < 6 * 3600e3;
         try { if (lastAt) localStorage.setItem('desk_rn_seen_' + B, JSON.stringify({ at: lastAt })); } catch (e) {}
-        _applyRedeemedNow(v, !isNew); first = false; });
+        _applyRedeemedNow(v, !isNew); first = false; },
+        function(err){ console.warn('redeemedNow listen refused', err && err.code);
+          if (_autoSheet.rnRef !== _myRef) return;
+          _autoSheet.rnFails = (_autoSheet.rnFails || 0) + 1;
+          _autoSheet.rnRetryAt = Date.now() + Math.min(10, _autoSheet.rnFails) * 60e3;
+          _autoSheet.rnRef = null; _autoSheet.rnBucket = null; });
     } catch (e) { console.warn('redeemedNow watch', e); }
   };
   setInterval(watch, 5000);
