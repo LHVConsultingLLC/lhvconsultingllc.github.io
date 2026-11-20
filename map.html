@@ -1142,7 +1142,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p88';
+var DESK_BUILD = 'desk-p89';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -3147,7 +3147,7 @@ function initMap(){
   // (OpenStreetMap's tile servers forbid bulk pre-download — see README).
   var usgs = function(svc){ return L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/' + svc + '/MapServer/tile/{z}/{y}/{x}',
     { maxNativeZoom: 16, maxZoom: 20, zIndex: 0, attribution: 'USGS The National Map' }); };   // z 0: above the saved Streets pack (-1) on Imagery, under NAIP (1)
-  baseLayers.topo = usgs('USGSTopo'); baseLayers.img = usgs('USGSImageryTopo');
+  baseLayers.topo = usgs('USGSTopo'); baseLayers.img = usgs('USGSImageryOnly');   /* 11/17: USGS retired USGSImageryTopo (every tile 404) */
   // Imagery at z16 and closer: USGSImageryTopo stretched past 16 turns its contour labels into giant
   // elevation numbers ("1010") over the houses, so the base under NAIP there is USGSImageryOnly (no
   // labels). Further out ImageryTopo stays: its road names help. _baseKey() picks; zoomend swaps.
@@ -3854,7 +3854,7 @@ async function prepareOffline(){   // ROUTING-only prototype (tile prefetch): of
   if (!ROUTING || !state.job) return;
   if (!navigator.onLine && !(link && link.connected)) { toast('Needs signal; it runs when the laptop is back online', 4000); return; }
   var pts = listable().map(ll).filter(Boolean); if (!pts.length) return;
-  var b = L.latLngBounds(pts).pad(0.03), urls = [], svc = { topo: 'USGSTopo', img: 'USGSImageryTopo' }[_base] || 'USGSTopo';
+  var b = L.latLngBounds(pts).pad(0.03), urls = [], svc = { topo: 'USGSTopo', img: 'USGSImageryOnly' }[_base] || 'USGSTopo';
   for (var z = 11; z <= 16; z++) {
     var x0 = lon2x(b.getWest(), z), x1 = lon2x(b.getEast(), z), y0 = lat2y(b.getNorth(), z), y1 = lat2y(b.getSouth(), z);
     for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) urls.push('https://basemap.nationalmap.gov/arcgis/rest/services/' + svc + '/MapServer/tile/' + z + '/' + y + '/' + x);
