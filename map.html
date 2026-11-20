@@ -1142,7 +1142,7 @@ var Q = new URLSearchParams(location.search);
 var LOOK = (function(){ try { if (Q.get('look') === '1') sessionStorage.setItem('lhv_look', '1'); else if (Q.get('look') === '0') sessionStorage.removeItem('lhv_look'); return sessionStorage.getItem('lhv_look') === '1'; } catch (e) { return Q.get('look') === '1'; } })();
 var MOCK = window.__DESK_MOCK || null;   // folder URL of a mock drive file — localhost + ?mock= ONLY (see <head>)
 var MOCK_ASOF = MOCK && /^\d{4}-\d{2}-\d{2}$/.test(Q.get('asof') || '') ? Q.get('asof') : null;   // mock only: pretend today is this date
-var DESK_BUILD = 'desk-p90';
+var DESK_BUILD = 'desk-p91';
 // ROUTING lives in a SEPARATE module, docs/desk/route.js, which plugs in through DeskAPI
 // below (section 13) when the page is opened with ?route=1: "Route here" on every parcel
 // card, started by the driver only — never automatically, never chained to the next stop.
@@ -1537,6 +1537,25 @@ function FirebaseLink(){
         });
       }).catch(function(){ self.libsMissing = true; onChange(); setTimeout(function(){ _reloadWhy('sync libraries did not load'); location.reload(); }, 60000); });
   };
+  /* ── THE SIGN-IN HEALS ITSELF (desk-p91, 11/20, Richie: the page signed in at 20:21 and by 20:41 had no user; every listener was dead,
+     only the key-based ping still worked, so the office's switch, the closes and the ship stamps never reached the map). Every 20 s:
+     a page that was signed in and now has NO user signs in again with the driver's key. Every 5 min: the token must still refresh; a
+     refresh that fails (a hotspot blocking the token host) is replaced by a fresh key sign-in. Listeners re-attach on the new sign-in
+     (onIdTokenChanged above). No reload, nothing for the driver. The ping reports auth so the office is told if it ever stays lost. */
+  var _authW = { lost: 0, heals: 0, lastHeal: 0, lastCheck: 0, ok: 0, err: '' };
+  self.authState = function(){ var u = null; try { u = firebase.auth().currentUser; } catch (e) {} return { ok: !!u, heals: _authW.heals, lastHeal: _authW.lastHeal, err: _authW.err, lost: _authW.lost }; };
+  function _authHeal(why){ if (Date.now() - _authW.lastHeal < 60000) return; _authW.lastHeal = Date.now(); _authW.heals++; _authW.err = String(why || '').slice(0, 60);
+    try { lsnLog('auth-heal', { why: why }); } catch (e) {} signInKeyed(); }
+  setInterval(function(){
+    try {
+      if (MOCK || LOOK || !window.firebase || !firebase.apps || !firebase.apps.length) return;
+      var u = firebase.auth().currentUser;
+      if (!u) { if (self.ready || _authW.ok) { _authW.lost++; if (_authW.lost >= 2) _authHeal('no user'); } return; }
+      _authW.lost = 0; _authW.ok = Date.now();
+      if (Date.now() - _authW.lastCheck >= 5 * 60000) { _authW.lastCheck = Date.now();
+        u.getIdToken().then(function(){ _authW.err = ''; }, function(e){ _authHeal('token refresh: ' + ((e && e.code) || e)); }); }
+    } catch (e) {}
+  }, 20000);
   function signInKeyed(){
     var key = null; try { key = localStorage.getItem('lhv_driver_key'); } catch(e) {}
     if (!key) { self.authFailed = true; self._onChange(); return; }
@@ -1699,7 +1718,11 @@ function rebuildLogs(){
     Object.keys(it.patch).forEach(function(f){ if (it.patch[f] === null) delete l[f]; else l[f] = it.patch[f]; });
   });
   try { _appClosesApply(out); } catch (e) {}   /* desk-p65: closes heard over the phone-iPad link (Kestrel app only) */
-  Object.keys(out).forEach(function(k){ if (!out[k].seq) out[k].seq = k; if (_shippedSeqs[k]) { out[k].shipped = true; out[k].shippedAt = _shippedSeqs[k]; } });
+  /* desk-p91 (11/20, Richie: Montgomery read "140 driven" from Hocking's ship stamps): a ship stamp counts only on this county's own log,
+     the row's own parcel, or a real close. A stamp on an empty or other-county log at the same seq number is ignored. */
+  var _own = function(k, l){ var r = _rowFor(k); if (!r || !l) return false; var n = function(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    return l.parcelId ? n(l.parcelId) === n(r.parcelId) : !!l.closed; };
+  Object.keys(out).forEach(function(k){ if (!out[k].seq) out[k].seq = k; if (_shippedSeqs[k] && _own(k, out[k])) { out[k].shipped = true; out[k].shippedAt = _shippedSeqs[k]; } });
   state.logs = out;
 }
 // ── ONE PROPERTY = ONE STOP ON THE MAP (Dustin 2026-10-11, rule changed 10/30) ────────
@@ -2192,7 +2215,9 @@ function publishJob(){
       _jobPublishing = false; _jobPublishedFor = sig;
       var _srv = String(prev).split('/').pop();
       // desk-p43: if the session's county is one of the driver's scheduled counties saved on this laptop, open it — no driver step
-      Promise.resolve(window._todayOpen ? window._todayOpen(_srv) : false).catch(function(){ return false; }).then(function(ok){ if (ok) return;
+      Promise.resolve(window._todayOpen ? window._todayOpen(_srv) : false).catch(function(){ return false; })
+        .then(function(ok){ return ok || (window.__deskForceSwitch ? window.__deskForceSwitch(_srv) : false); }).catch(function(){ return false; })   /* desk-p91: by the driver's key when the sign-in is not back yet */
+        .then(function(ok){ if (ok) return;
         /* desk-p86 (audit 11/10 F15): no manual step for the driver; the "Load drive file" link this named is hidden since p85 */
         try { alertBox('Different county', 'Your session is on ' + _srv + ', but this laptop had ' + b + ' saved. Ask Claude in Kestrel; nothing to pick here.'); } catch (e) {}
         try { showStart(); } catch (e) {} });
@@ -2945,6 +2970,12 @@ async function shipSession(opts){
   }
   var _parked = Number((_camSync && _camSync.parked) || 0);
   if (_parked > 0 && !auto && !(await confirmBox('Failed uploads', '⚠ ' + _parked + ' photo(s) FAILED to upload and are parked.\n\nThose parcels will NOT ship until their photos land.\n\nShip everything else?', 'Ship Rest'))) return;
+  /* desk-p91 (11/20, Richie: "110 marked, no photos heard" while every one of them was closed with photos on the server: the listeners
+     were dead). Before saying so, the session's closes are read fresh over HTTPS; only marks still unclosed after that are listed. */
+  if (_dpOn() && _dpMarkedOpen().length && window.link && link.restWrite) {
+    try { var _fresh = await withTimeout(link.restWrite('GET', 'logs'), 10000);
+      if (_fresh && typeof _fresh === 'object') { Object.keys(_fresh).forEach(function(k){ var l = _fresh[k]; if (l && l.closed && !_isForeignLog(k, l)) _serverLogs[k] = l; }); rebuildLogs(); renderAll(); } } catch (e) {}
+  }
   if (_dpOn()) { var _mk = _dpMarkedOpen(); if (_mk.length && !auto && !(await confirmBox('Marked, no photos heard', '🟣 You marked ' + _mk.length + ' parcel(s) driven, but no photos have come in for them:\n  SEQ ' + _mk.join(', ') + '\n\nA mark is not a close. If the camera still has their photos, let it upload first. Ship everything else?', 'Ship Rest'))) return; }
   var logs = Object.values(state.logs);
   var complete = logs.filter(function(l){ return seqStatus(l) === 'complete'; });
@@ -5160,6 +5191,7 @@ if (Q.get('test') === '1') { try { var _h2 = $('here-btn2'); _h2.style.display =
         try { _ans({ at: Date.now(), cmdAt: v.at, do: v.do, build: DESK_BUILD, via: via || 'listener' }).catch(function(){}); } catch (e) {}
         if (v.do === 'diag') { if (window.__micDiag) window.__micDiag(); }   // office mic/speech diagnostic: reads only, nothing on screen
         else if (v.do === 'reload') reloadWhenIdle('from the office');
+        else if (v.do === 'switch' && v.bucket && window.__deskForceSwitch) window.__deskForceSwitch(String(v.bucket), v.at);
         else if (v.do === 'sheet' && window.deskAutoSheet) { (async function(){ try { var d = await DB.get('kv', 'day'); if (d) { d.sheetReadyAt = 0; await DB.put('kv', 'day', d); } } catch (e) {} window.deskAutoSheet('office'); })(); }
       } catch (e) {} }
   window.__deskCmdIn = _cmdIn;
@@ -5178,6 +5210,49 @@ var SHEET_URL = 'https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet
 function _noteShow(id, html, ms){ try { html = _devText(html); var el = $(id); if (!el) { el = document.createElement('div'); el.id = id; $('mapwrap').appendChild(el); }
   el.innerHTML = html; el.style.display = 'block'; clearTimeout(el._t); _noteKeep(el.textContent); if (ms) el._t = setTimeout(function(){ el.style.display = 'none'; }, ms);
   var x = el.querySelector('button'); if (x) x.onclick = function(){ el.style.display = 'none'; }; } catch (e) {} }
+/* ── FORCED COUNTY SWITCH (desk-p91, 11/20, Dustin: "give ourselves a way to force in a new map, whether he's moving or not") ──
+   The office's "Switch county" (server _switchCounty) archives and clears the old county's session records, points the session at the
+   new county, publishes its list for the camera, then sends deskCmd {do:'switch', bucket}. This page swaps the county IN PLACE: no
+   reload, no moving guard (Richie drove Hocking -> Montgomery at 70 mph on a laptop that would only reload when stopped). The one
+   thing it waits for is an open parcel on the camera (a close must land on the county it was shot in), never longer than that
+   parcel's own stale rule. The sheet: this laptop's saved copy, else the server's (signed in, or by the driver's key alone when the
+   sign-in has lapsed). Everything keyed by seq on this page is emptied first (no old county's closes or ship stamps on new seqs). */
+var _fsw = { want: null, at: 0, tries: 0 };
+async function _fswSheet(B){
+  if (window._deskSwitchSheet) return window._deskSwitchSheet(B);   /* tests only (mock desk) */
+  try { var s = await DB.get('kv', 'schedSheet:' + B); if (s && s.b64) return s; } catch (e) {}
+  var body = { bucket: B, haveReadyAt: 0 };
+  try { var u = window.firebase && firebase.auth && firebase.auth().currentUser; if (u) body.idToken = await u.getIdToken(); } catch (e) {}
+  if (!body.idToken) { try { var k = localStorage.getItem('lhv_driver_key'); if (k) body.key = k; } catch (e) {} }
+  if (!body.idToken && !body.key) return null;
+  try { var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function(){ try { ac && ac.abort(); } catch (e) {} }, 60000);
+    var r = await (await fetch(SHEET_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac ? ac.signal : undefined })).json(); clearTimeout(tm);
+    if (r && r.ok && r.ready && r.b64) { var rec = { b64: r.b64, readyAt: Number(r.readyAt) || Date.now(), at: Date.now() }; try { await DB.put('kv', 'schedSheet:' + B, rec); } catch (e) {} return rec; } } catch (e) {}
+  return null;
+}
+window.__deskForceSwitch = async function(bucket, at){
+  var B = String(bucket || '').toUpperCase(); if (!/^[A-Z]{2}_[A-Z0-9_]+$/.test(B) || LOOK) return false;
+  if (state.job && state.job.bucket === B && !$('start').offsetParent) { _fsw.want = null; return true; }
+  _fsw.want = B; _fsw.at = at || Date.now();
+  if (_camOpen && !(window._camOpenStale && window._camOpenStale())) { setTimeout(function(){ if (_fsw.want === B) window.__deskForceSwitch(B, at); }, 5000); return false; }   // STOP first
+  var s = await _fswSheet(B);
+  if (!s) { _fsw.tries++; if (_fsw.tries < 60) setTimeout(function(){ if (_fsw.want === B) window.__deskForceSwitch(B, at); }, 15000); return false; }
+  var seqs = null; try { var bin = atob(s.b64), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); seqs = parseDriveFile(u8.buffer); } catch (e) {}
+  if (!seqs || !seqs.length) return false;
+  var from = state.job ? state.job.bucket : '';
+  /* nothing keyed by seq crosses counties: the old county's closes, ship stamps, photo counts and camera seq go before the new list loads */
+  _serverLogs = {}; _photoCountsRaw = {}; _shippedSeqs = {}; _cameraSeq = null; state.currentSeq = null; try { _rawClosed = {}; } catch (e) {}
+  await startDay(jobFromBucket(B), seqs, { quiet: true });
+  try { var d = await DB.get('kv', 'day'); if (d && d.job && d.job.bucket === B) { d.sheetReadyAt = Number(s.readyAt || 0); await DB.put('kv', 'day', d); } } catch (e) {}
+  _fsw.want = null; _fsw.tries = 0;
+  /* the full kit, not just pins (The Funnel 11/20): the new county's imagery + streets packs start loading and copying now (add only;
+     other counties' copies are never removed); its parcel aerials are cut from that imagery as it lands */
+  try { if (window.DeskImagery) { if (DeskImagery.reload) DeskImagery.reload(); if (DeskImagery.reloadStreets) DeskImagery.reloadStreets(); setTimeout(function(){ try { DeskImagery.copyNow && DeskImagery.copyNow(); } catch (e) {} }, 3000); } } catch (e) {}
+  var _nm = function(x){ return String(x || '').split('_').slice(1).join(' ').toLowerCase().replace(/\b\w/g, function(c){ return c.toUpperCase(); }); };
+  try { _noteShow('sheet-note', (from ? _nm(from) + ' → ' : '') + _nm(B) + ' from the office. ' + seqs.length.toLocaleString() + ' parcels. Nothing to do.', 12000); } catch (e) {}
+  try { if (window._todayRender) window._todayRender(); } catch (e) {}
+  return true;
+};
 async function deskAutoSheet(why){
   try {
     if (_autoSheet.busy || LOOK || !state.job || !state.job.bucket || navigator.onLine === false) return;
@@ -5728,7 +5803,7 @@ window.__micDiag = async function(){
     var camAt = Math.max(Number(window._camHbSeenAt || 0), Number((window._camSync && window._camSync.at) || 0));
     return { view: (st && getComputedStyle(st).display !== 'none') ? 'start' : (pins ? 'map' : 'blank'), rows: (window.state && state.seqs) ? state.seqs.length : 0, pins: pins,
       sel: (window.state && state.currentSeq) || null, bucket: (window.state && state.job && state.job.bucket) || null,
-      link: !!(window.link && link.connected), camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
+      link: !!(window.link && link.connected), auth: (window.link && link.authState) ? link.authState() : null, camSeenS: camAt ? Math.round((Date.now() - camAt) / 1000) : null,
       outbox: (window._outbox || []).length, ask: window.__askState || null, build: window.DESK_BUILD || '', rc: (window.link && link.reconnects) || 0, setup: (su && su.style.display !== 'none' && !/Ready to drive/.test(su.innerText)) ? su.innerText.replace(/\s+/g, ' ').slice(0, 160) : '',
       /* desk-p51: listener health (cancelled / re-attached / socket rebuilt / what the ping brought), a SHIP waiting for signal, offline-ready kit */
       lsn: (function(){ try { var L = (window.link && link._lsn) || {}, W = window._lsnW || {}; var hb = window._hbHeardAt ? Math.round((Date.now() - window._hbHeardAt) / 1000) : null;

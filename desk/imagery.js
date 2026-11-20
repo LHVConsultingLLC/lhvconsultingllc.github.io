@@ -262,11 +262,13 @@
   async function packLink(bucket, K) {
     var kind = K === P.imagery ? 'imagery' : 'streets';
     if (window._deskPackLink) return window._deskPackLink(bucket, kind);   /* tests only */
-    var fb = window.firebase, user = fb && fb.auth && fb.auth().currentUser; if (!user) return { err: 'not signed in' };
+    /* desk-p91 (11/20): a lapsed sign-in never stops a county's packs; the driver's key asks for them (driveSheet accepts it) */
+    var fb = window.firebase, user = fb && fb.auth && fb.auth().currentUser, key = ''; try { key = localStorage.getItem('lhv_driver_key') || ''; } catch (e) {}
+    if (!user && !key) return { err: 'not signed in' };
     var as = ''; try { as = (new URLSearchParams(location.search).get('as') || '').toUpperCase(); } catch (e) {}
     var ac = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { try { ac && ac.abort(); } catch (e) {} }, 30000);
     try {
-      var body = { idToken: await user.getIdToken(), bucket: bucket, kind: 'pack', pack: kind }; if (as) body.drv = as;
+      var body = { bucket: bucket, kind: 'pack', pack: kind }; if (user) body.idToken = await user.getIdToken(); else body.key = key; if (as) body.drv = as;
       var r = await fetch('https://us-central1-lhv-field-log.cloudfunctions.net/driveSheet', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal: ac ? ac.signal : undefined });
       var j = await r.json(); return j && j.ok ? j : { err: (j && j.error) || ('HTTP ' + r.status) };
