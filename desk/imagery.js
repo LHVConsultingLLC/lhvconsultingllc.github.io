@@ -233,12 +233,33 @@
     }
     return null;
   }
+  /* desk-p93 (11/21 9:22 PM, RF Montgomery: the 3.9 GB aerials file in his Dropbox folder could not be read, "NotReadableError
+     ... permission problems", and Chrome's copy sat at 0 all night while the server held the same pack). A folder file that
+     cannot be read is noted by its size + date (a NEW file in the folder is tried again) and the pack comes from the server
+     instead, on the next beat, by itself, resuming where it stops. Nothing is asked of the driver. The first 16 KB are read
+     once per file before any copy: an error, or no answer in the 15 s a server tile gets (netTile), = not readable. */
+  var FBAD = {}, FOK = {}, PROBE_MS = 15000;
+  async function folderBad(name, sig) { if (FBAD[name] === sig) return true;
+    try { var r = await DB.get('kv', 'folderBad:' + name); if (r && r.sig === sig) { FBAD[name] = sig; return true; } } catch (e) {} return false; }
+  async function markFolderBad(name, sig, why) { FBAD[name] = sig; delete FOK[name];
+    try { await DB.put('kv', 'folderBad:' + name, { sig: sig, why: String(why || '').slice(0, 120), at: Date.now() }); } catch (e) {} }
+  async function folderReadable(name, f) {
+    var sig = f.size + ':' + f.lastModified; if (FOK[name] === sig) return true;
+    if (await folderBad(name, sig)) return false;
+    var tm = 0, ok = await Promise.race([
+      f.slice(0, 16384).arrayBuffer().then(function (b) { return b.byteLength > 0 ? true : 'empty read'; }, function (e) { return String((e && e.name) || 'Error') + ': ' + String((e && e.message) || e); }),
+      new Promise(function (r) { tm = setTimeout(function () { r('no answer in ' + PROBE_MS / 1000 + ' s'); }, PROBE_MS); })]);
+    clearTimeout(tm);
+    if (ok === true) { FOK[name] = sig; return true; }
+    await markFolderBad(name, sig, ok); return false;
+  }
   async function sourceFile(bucket, K) {   // → { size, mod, get() → Blob, handle? } or null
     var name = bucket + K.file;
     /* THE LEDGERSTONE APP (11/1, desk/native.js): the iPad downloaded the pack itself; read it from the app's own storage.
        window.LSNative only exists inside the app, so the laptops never take this path. */
     if (window.LSNative && window.LSNative.packs) { try { var ns = await window.LSNative.packs.source(bucket, K === P.imagery ? 'imagery' : 'streets'); if (ns) return ns; } catch (e) {} }
     if (_testSrc[name]) { var tf = _testSrc[name];   /* harness only: a File stands in for the folder file */
+      if (!(await folderReadable(name, tf))) return netSource(bucket, K);
       return { size: tf.size, mod: String(tf.lastModified), handle: { test: 1 }, file: tf, get: function () { return Promise.resolve(tf); } }; }
     if (window.__DESK_MOCK) {
       var url = window.__DESK_MOCK.replace(/\/+$/, '') + '/' + name;
@@ -248,7 +269,8 @@
         get: function () { return fetch(url, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }); } };
     }
     var fh = await folderHandle(bucket, K); if (!fh) return netSource(bucket, K);
-    var f = await fh.getFile();
+    var f = null; try { f = await fh.getFile(); } catch (e) { return netSource(bucket, K); }   /* desk-p93: no file to read = the server */
+    if (!(await folderReadable(name, f))) return netSource(bucket, K);
     // reading the bytes now brings an online-only Dropbox file down while there is signal
     return { size: f.size, mod: String(f.lastModified), handle: fh, file: f,
       get: function () { return f.arrayBuffer().then(function (b) { return new Blob([b], { type: 'application/vnd.pmtiles' }); }); } };
@@ -621,6 +643,8 @@
     st.secs = (st.secs || 0) + Math.round((Date.now() - t0) / 1000);
     if (d.err) {
       st.err = d.err;
+      /* desk-p93: the folder file failed mid-copy (not the disk filling): noted, and the server copy starts on the next beat */
+      if (!src.net && !/Quota|space|NoModification|short write/i.test(d.err)) { await markFolderBad(name, sig, d.err); st.wait = 'from the server next'; copySoon(); return false; }
       if (/^Error: (link|network)/.test(d.err)) { delete NET[name]; st.wait = 'asks the server again'; }   /* desk-p54: an old link: a new one on the next tick, the copy resumes where it stopped */
       if (/Quota|space|NoModification|short write/i.test(d.err)) {   // the disk filled during the copy: give the space back, keep reading in place
         if (/Quota|space|short write/i.test(d.err)) { try { await (await opDir()).removeEntry(name); } catch (e) {} try { await DB.del('kv', 'opfs:' + name); } catch (e) {} st.copied = 0; st.wait = 'low disk'; OP.lowAt = Date.now(); }
@@ -642,6 +666,8 @@
       /* desk-p54: the server could not be reached for the check (signal gone, old link): the copy stays; the next tick re-reads
          its last 16 MB and checks again. Only a real mismatch throws the copy away. */
       if (/server read/.test(String(e && e.message))) { delete NET[name]; st.wait = 'asks the server again'; return false; }
+      /* desk-p93: the folder file could not be read for the check: the server copy replaces it on the next beat */
+      if (!src.net && /NotReadable|NotFound|not.*read/i.test(String((e && e.name) + ' ' + (e && e.message)))) { await markFolderBad(name, sig, st.err); st.wait = 'from the server next'; copySoon(); return false; }
       try { await DB.put('kv', 'opfs:' + name, { sig: sig, total: src.size, done: false, at: Date.now() }); } catch (x) {}
       try { await (await opDir()).removeEntry(name); } catch (x) {}   // copy it again from the start next time
       return false;
@@ -681,7 +707,7 @@
     } catch (e) {}
     /* notes and older whole-file copies (IndexedDB) of counties no longer kept */
     try { var ks = await DB.keys('kv');
-      for (var j = 0; j < ks.length; j++) { var k = String(ks[j]), mm = /^(opfs:|imagery:|streets:)([A-Z]{2}_[A-Z0-9_]+)/.exec(k);
+      for (var j = 0; j < ks.length; j++) { var k = String(ks[j]), mm = /^(opfs:|imagery:|streets:|folderBad:)([A-Z]{2}_[A-Z0-9_]+)/.exec(k);
         if (mm && !keep[mm[2]]) { try { await DB.del('kv', k); } catch (e) {} } }
     } catch (e) {}
     await cleanupCounty(keep);
